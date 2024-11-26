@@ -4,6 +4,7 @@ import os, sys
 import json
 
 
+# WORKS!
 def circle_area(radius):
     if radius < 0:
         print("Invalid radius")
