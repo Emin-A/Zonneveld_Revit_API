@@ -7,6 +7,5 @@ matplotlib
 black
 pylint
 pytest
-ruff
 revitron
 revitpythonwrapper

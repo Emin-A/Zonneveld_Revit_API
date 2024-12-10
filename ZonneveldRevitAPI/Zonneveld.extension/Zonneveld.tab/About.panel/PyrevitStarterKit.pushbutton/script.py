@@ -19,11 +19,36 @@ Author: Emin Avdovic"""
 # ║║║║╠═╝║ ║╠╦╝ ║ ╚═╗
 # ╩╩ ╩╩  ╚═╝╩╚═ ╩ ╚═╝ IMPORTS
 # ====================================================================================================
+# from pyrevit.coreutils import (
+#     get_pyrevit_version,
+#     get_ironpython_version,
+#     get_cpython_version,
+# )
+import os
+import sys
+
+VENV_PATH = r"C:\Zonneveld\Zonneveld_Revit_API\.venv\Lib\site-packages"
+if VENV_PATH not in sys.path:
+    sys.path.append(VENV_PATH)
+
+# Path to pyrevitlib
+PYREVIT_LIB_PATH = r"C:\Users\bim3d\AppData\Roaming\pyRevit-Master\pyrevitlib"
+if PYREVIT_LIB_PATH not in sys.path:
+    sys.path.append(PYREVIT_LIB_PATH)
+
+# venv_path = os.path.join(os.path.dirname(__file__), ".venv", "Lib", "site-packages")
+# sys.path.append(venv_path)
 from Autodesk.Revit.DB import *
+from pyrevit.coreutils import get_pyrevit_version
+from pyrevit import EXEC_PARAMS
 from pyrevit import (
     forms,
 )  # By importing forms you also get references to WPF package! Very IMPORTANT
-import wpf, os, clr  # wpf can be imported only after pyrevit.forms!
+import wpf  # wpf can be imported only after pyrevit.forms!
+import clr
+
+# pyRevit imports
+# from pyrevit.pyutils import get_pyrevit_version
 
 # .NET Imports
 clr.AddReference("System")
@@ -43,6 +68,16 @@ PATH_SCRIPT = os.path.dirname(__file__)
 uidoc = __revit__.ActiveUIDocument
 app = __revit__.Application
 doc = __revit__.ActiveUIDocument.Document  # type: Document
+
+# Extract environment variables
+pyrevit_version = os.getenv("PYREVIT_VERSION")
+cpy_version = os.getenv("PYREVIT_CPYVERSION")
+ipy_version = os.getenv("PYREVIT_IPYVERSION")
+
+
+# This function is now defined globally
+def get_pyrevit_version():
+    return os.getenv("PYREVIT_VERSION", "Unknown")
 
 
 # ╔═╗╦  ╔═╗╔═╗╔═╗╔═╗╔═╗
@@ -72,8 +107,48 @@ class AboutForm(Window):
         path_xaml_file = os.path.join(PATH_SCRIPT, "AboutUI.xaml")
         wpf.LoadComponent(self, path_xaml_file)
 
+        # Fetch compatibility information
+        self.populate_compatibility_info()
+
         # Show Form
         self.ShowDialog()
+
+    def populate_compatibility_info(self):
+        """Fetch and display pyRevit, IronPython, CPython versions and compatibility info."""
+        # Get Revit version
+        revit_version = app.VersionNumber
+
+        try:
+            # Fetch pyRevit environment versions
+            pyrevit_version = getattr(EXEC_PARAMS, "pyrevit_version", "none")
+            if (
+                not pyrevit_version
+            ):  # Fallback to pyRevit's internal function if unavailable
+                pyrevit_version = get_pyrevit_version() or "Unknown"
+        except Exception:
+            pyrevit_version = get_pyrevit_version() or "Unknown"
+        try:
+            ironpython_version = getattr(EXEC_PARAMS, "ironpython_version", "Unknown")
+        except AttributeError:
+            ironpython_version = "Unknown"
+        try:
+            cpython_version = getattr(EXEC_PARAMS, "cpython_version", "Unknown")
+        except AttributeError:
+            cpython_version = "Unknown"
+
+        # Compatibility check messages
+        compatibility_message = f"Revit Version: {revit_version}\n"
+        compatibility_message += f"pyRevit Version: {pyrevit_version}\n"
+        compatibility_message += f"IronPython Version: {ironpython_version}\n"
+        compatibility_message += f"CPython Version: {cpython_version}\n"
+
+        if revit_version in ["2021", "2022", "2023", "2024", "2025"]:
+            compatibility_message += "Compatibility: ✅ Supported\n"
+        else:
+            compatibility_message += "Compatibility: ⚠️ Not officially supported\n"
+
+        # Update the UI element (assumes a TextBox named 'CompatibilityText')
+        self.CompatibilityText.Text = compatibility_message
 
     # ╔═╗╦  ╦╔═╗╔╗╔╔╦╗╔═╗
     # ║╣ ╚╗╔╝║╣ ║║║ ║ ╚═╗
@@ -92,6 +167,23 @@ class AboutForm(Window):
         """Forwarding for a Hyperlinks."""
         Start(e.Uri.AbsoluteUri)
 
+    def CheckCompatibility_Click(self, sender, e):
+        """Handles the Check Compatibility button click event."""
+        try:
+            self.populate_compatibility_info()
+        except Exception as ex:
+            # Log the error instead of crashing
+            print(f"Error checking compatibility: {ex}")
+            forms.alert(
+                f"Error fetching compatibility info: {ex}", title="pyRevitStarterKit"
+            )
+
+
+print(f"pyRevit Version: {pyrevit_version}")
+print(f"CPython Version: {cpy_version}")
+print(f"IronPython Version: {ipy_version}")
+print(f"pyRevit Version: {get_pyrevit_version()}")
+print(dir(EXEC_PARAMS))
 
 # ╦ ╦╔═╗╔═╗  ╔═╗╔═╗╦═╗╔╦╗
 # ║ ║╚═╗║╣   ╠╣ ║ ║╠╦╝║║║

@@ -191,7 +191,8 @@
                             <Run FontWeight="Bold" Text="🎉 Welcome to Zonneveld toolbar!" Foreground= "#111213"/>
                         </TextBlock>
                         <TextBlock Text="This toolbar solves your problems, mundane and repetitive tasks so that you stay productive and motivated. Please check them out!" Foreground= "#111213" Margin="0,0,0,10"/>
-
+                        <TextBox x:Name="CompatibilityText" Text="Compatibility Info" Margin="10"/>
+                        <Button x:Name= "CheckCompatibilityButton" Width="200" Height="40" Background="#0085ff" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" Content= "Check Compatibility" Click="CheckCompatibility_Click"/>
                         <!-- Title Text with Hyperlink -->
                         <!-- <TextBlock HorizontalAlignment="Center">
                             <Hyperlink NavigateUri="https://kudos.learnrevitapi.com/r/pyrevit-starter-kit" RequestNavigate="Hyperlink_RequestNavigate">
