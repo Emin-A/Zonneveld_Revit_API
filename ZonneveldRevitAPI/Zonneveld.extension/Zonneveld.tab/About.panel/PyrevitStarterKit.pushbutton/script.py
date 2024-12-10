@@ -39,7 +39,6 @@ if PYREVIT_LIB_PATH not in sys.path:
 # venv_path = os.path.join(os.path.dirname(__file__), ".venv", "Lib", "site-packages")
 # sys.path.append(venv_path)
 from Autodesk.Revit.DB import *
-from pyrevit.coreutils import get_pyrevit_version
 from pyrevit import EXEC_PARAMS
 from pyrevit import (
     forms,
@@ -69,15 +68,16 @@ uidoc = __revit__.ActiveUIDocument
 app = __revit__.Application
 doc = __revit__.ActiveUIDocument.Document  # type: Document
 
-# Extract environment variables
-pyrevit_version = os.getenv("PYREVIT_VERSION")
-cpy_version = os.getenv("PYREVIT_CPYVERSION")
-ipy_version = os.getenv("PYREVIT_IPYVERSION")
-
 
 # This function is now defined globally
 def get_pyrevit_version():
     return os.getenv("PYREVIT_VERSION", "Unknown")
+
+
+# Extract environment variables
+pyrevit_version = get_pyrevit_version()
+cpy_version = os.getenv("PYREVIT_CPYVERSION", "Unknown")
+ipy_version = os.getenv("PYREVIT_IPYVERSION", "Unknown")
 
 
 # ╔═╗╦  ╔═╗╔═╗╔═╗╔═╗╔═╗
