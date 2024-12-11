@@ -39,6 +39,7 @@ if PYREVIT_LIB_PATH not in sys.path:
 # venv_path = os.path.join(os.path.dirname(__file__), ".venv", "Lib", "site-packages")
 # sys.path.append(venv_path)
 from Autodesk.Revit.DB import *
+from Autodesk.Revit.UI import TaskDialog
 from pyrevit import EXEC_PARAMS
 from pyrevit import (
     forms,
@@ -120,13 +121,11 @@ class AboutForm(Window):
 
         try:
             # Fetch pyRevit environment versions
-            pyrevit_version = getattr(EXEC_PARAMS, "pyrevit_version", "none")
-            if (
-                not pyrevit_version
-            ):  # Fallback to pyRevit's internal function if unavailable
-                pyrevit_version = get_pyrevit_version() or "Unknown"
+            pyrevit_version = getattr(
+                EXEC_PARAMS, "pyrevit_version", get_pyrevit_version()
+            )
         except Exception:
-            pyrevit_version = get_pyrevit_version() or "Unknown"
+            pyrevit_version = get_pyrevit_version()
         try:
             ironpython_version = getattr(EXEC_PARAMS, "ironpython_version", "Unknown")
         except AttributeError:
@@ -161,7 +160,7 @@ class AboutForm(Window):
     def header_drag(self, sender, e):
         """Drag window by holding LeftButton on the header."""
         if e.LeftButton == MouseButtonState.Pressed:
-            DragMove(self)
+            self.DragMove()
 
     def Hyperlink_RequestNavigate(self, sender, e):
         """Forwarding for a Hyperlinks."""
@@ -170,20 +169,35 @@ class AboutForm(Window):
     def CheckCompatibility_Click(self, sender, e):
         """Handles the Check Compatibility button click event."""
         try:
+            # Fetch updated compatibility information
             self.populate_compatibility_info()
+            # Show a confirmation message
+            forms.alert(
+                "Compatibility information updated successfully.",
+                title="Check Compatibility",
+            )
         except Exception as ex:
             # Log the error instead of crashing
-            print(f"Error checking compatibility: {ex}")
             forms.alert(
                 f"Error fetching compatibility info: {ex}", title="pyRevitStarterKit"
             )
+            print(f"Error: {ex}")
 
 
-print(f"pyRevit Version: {pyrevit_version}")
-print(f"CPython Version: {cpy_version}")
-print(f"IronPython Version: {ipy_version}")
-print(f"pyRevit Version: {get_pyrevit_version()}")
-print(dir(EXEC_PARAMS))
+# print(f"pyRevit Version: {pyrevit_version}")
+# print(f"CPython Version: {cpy_version}")
+# print(f"IronPython Version: {ipy_version}")
+# print(f"pyRevit Version: {get_pyrevit_version()}")
+# print(dir(EXEC_PARAMS))
+
+# Uncomment the following for debugging (log to file if needed)
+with open("debug_log.txt", "w") as log:
+    log.write(f"pyRevit Version: {pyrevit_version}\n")
+    log.write(f"CPython Version: {cpy_version}\n")
+    log.write(f"IronPython Version: {ipy_version}\n")
+    log.write(f"pyRevit Version: {get_pyrevit_version()}\n")
+    log.write(str(dir(EXEC_PARAMS)))
+
 
 # ╦ ╦╔═╗╔═╗  ╔═╗╔═╗╦═╗╔╦╗
 # ║ ║╚═╗║╣   ╠╣ ║ ║╠╦╝║║║
