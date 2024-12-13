@@ -26,6 +26,8 @@ Author: Emin Avdovic"""
 # )
 import os
 import sys
+import platform
+import re
 
 # venv_path = os.path.join(os.path.dirname(__file__), ".venv", "Lib", "site-packages")
 # sys.path.append(venv_path)
@@ -43,8 +45,6 @@ from pyrevit import (
 import wpf  # wpf can be imported only after pyrevit.forms!
 import clr
 
-# import platform
-# import re
 
 # pyRevit imports
 # from pyrevit.pyutils import get_pyrevit_version
@@ -219,15 +219,51 @@ class AboutForm(Window):
         # Get Revit version
         revit_version = app.VersionNumber
 
+        def get_accurate_version(var_name, version_checker):
+            """Helper function to get version and check support."""
+            version = get_environment_variable(var_name, version_checker())
+            return version
+
+        # Version checkers
+        def check_pyrevit_version():
+            try:
+                import pyrevit
+
+                return pyrevit.__version__
+            except Exception:
+                return "Not Detected"
+
+        def check_ironpython_version():
+            if "IronPython" in sys.version:
+                return platform.python_version()
+            return "Not Detected"
+
+        def check_cpython_version():
+            if "CPython" in platform.python_implementation():
+                return platform.python_version()
+            return "Not Detected"
+
         compatibility_info = [
             (
                 "Revit Version",
                 revit_version,
                 revit_version in ["2021", "2022", "2023", "2024", "2025"],
             ),
-            ("pyRevit Version", pyrevit_version, pyrevit_version != "Unknown"),
-            ("IronPython Version", ipy_version, ipy_version != "Unknown"),
-            ("CPython Version", cpy_version, cpy_version != "Unknown"),
+            (
+                "pyRevit Version",
+                get_accurate_version("PYREVIT_VERSION", check_pyrevit_version),
+                get_environment_variable("PYREVIT_VERSION") != "Unknown",
+            ),
+            (
+                "IronPython Version",
+                get_accurate_version("PYREVIT_IPYVERSION", check_ironpython_version),
+                "IronPython" in sys.version,
+            ),
+            (
+                "CPython Version",
+                get_accurate_version("PYREVIT_CPYVERSION", check_cpython_version),
+                "CPython" in platform.python_implementation(),
+            ),
         ]
 
         # try:

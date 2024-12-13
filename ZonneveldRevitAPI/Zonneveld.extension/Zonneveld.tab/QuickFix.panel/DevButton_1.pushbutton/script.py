@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-__title__   = "Button 1"
-__doc__     = """Version = 1.0
+__title__ = "Button 1"
+__doc__ = """Version = 1.0
 Date    = 15.06.2024
 ________________________________________________________________
 Description:
@@ -30,39 +30,38 @@ Author: Erik Frits"""
 # ╦╔╦╗╔═╗╔═╗╦═╗╔╦╗╔═╗
 # ║║║║╠═╝║ ║╠╦╝ ║ ╚═╗
 # ╩╩ ╩╩  ╚═╝╩╚═ ╩ ╚═╝
-#==================================================
+# ==================================================
 from Autodesk.Revit.DB import *
 
-#.NET Imports
+# .NET Imports
 import clr
-clr.AddReference('System')
+
+clr.AddReference("System")
 from System.Collections.Generic import List
 
 
 # ╦  ╦╔═╗╦═╗╦╔═╗╔╗ ╦  ╔═╗╔═╗
 # ╚╗╔╝╠═╣╠╦╝║╠═╣╠╩╗║  ║╣ ╚═╗
 #  ╚╝ ╩ ╩╩╚═╩╩ ╩╚═╝╩═╝╚═╝╚═╝
-#==================================================
-app    = __revit__.Application
-uidoc  = __revit__.ActiveUIDocument
-doc    = __revit__.ActiveUIDocument.Document #type:Document
+# ==================================================
+app = __revit__.Application
+uidoc = __revit__.ActiveUIDocument
+doc = __revit__.ActiveUIDocument.Document  # type:Document
 
 
 # ╔╦╗╔═╗╦╔╗╔
 # ║║║╠═╣║║║║
 # ╩ ╩╩ ╩╩╝╚╝
-#==================================================
+# ==================================================
 
 
+# 🤖 Automate Your Boring Work Here
 
 
-#🤖 Automate Your Boring Work Here
+# ==================================================
+# 🚫 DELETE BELOW
+from Snippets._customprint import (
+    kit_button_clicked,
+)  # Import Reusable Function from 'lib/Snippets/_customprint.py'
 
-
-
-
-
-#==================================================
-#🚫 DELETE BELOW
-from Snippets._customprint import kit_button_clicked    # Import Reusable Function from 'lib/Snippets/_customprint.py'
-kit_button_clicked(btn_name=__title__)                  # Display Default Print Message
+kit_button_clicked(btn_name=__title__)  # Display Default Print Message
