@@ -1,31 +1,18 @@
 # -*- coding: utf-8 -*-
-__title__ = "Button 1"
+__title__ = "Automation"
 __doc__ = """Version = 1.0
-Date    = 15.06.2024
-________________________________________________________________
+Date    = 22.11.2024
+____________________________________________
 Description:
-
-This is the placeholder for a .pushbutton
-You can use it to start your pyRevit Add-In
-
-________________________________________________________________
+Zonneveld Toolbar About Form
+____________________________________________
 How-To:
-
-1. [Hold ALT + CLICK] on the button to open its source folder.
-You will be able to override this placeholder.
-
-2. Automate Your Boring Work ;)
-
-________________________________________________________________
-TODO:
-[FEATURE] - Describe Your ToDo Tasks Here
-________________________________________________________________
-Last Updates:
-- [15.06.2024] v1.0 Change Description
-- [10.06.2024] v0.5 Change Description
-- [05.06.2024] v0.1 Change Description 
-________________________________________________________________
-Author: Erik Frits"""
+- Click the Button
+____________________________________________
+Last update:
+- [22.11.2024] - V1.0 RELEASE
+____________________________________________
+Author: Emin Avdovic"""
 
 # ╦╔╦╗╔═╗╔═╗╦═╗╔╦╗╔═╗
 # ║║║║╠═╝║ ║╠╦╝ ║ ╚═╗
