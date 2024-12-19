@@ -1,54 +1,40 @@
 # -*- coding: utf-8 -*-
-__title__ = "Automation"
-__doc__ = """Version = 1.0
-Date    = 22.11.2024
-____________________________________________
-Description:
-Zonneveld Toolbar About Form
-____________________________________________
-How-To:
-- Click the Button
-____________________________________________
-Last update:
-- [22.11.2024] - V1.0 RELEASE
-____________________________________________
-Author: Emin Avdovic"""
+import sys
+import platform
+import math
+import json
 
-# ╦╔╦╗╔═╗╔═╗╦═╗╔╦╗╔═╗
-# ║║║║╠═╝║ ║╠╦╝ ║ ╚═╗
-# ╩╩ ╩╩  ╚═╝╩╚═ ╩ ╚═╝
-# ==================================================
-from Autodesk.Revit.DB import *
+try:
+    # Hardcoded pyRevit Version
+    pyrevit_version = "4.8.16 (Hardcoded)"
 
-# .NET Imports
-import clr
+    # Revit API Test
+    revit_version = __revit__.Application.VersionNumber
 
-clr.AddReference("System")
-from System.Collections.Generic import List
+    # Engine Detection
+    if "IronPython" in sys.version:
+        python_engine = "IronPython"
+        python_version = "2.7.11 (Hardcoded)"
+    else:
+        python_engine = "CPython"
+        python_version = "3.7.8 (Hardcoded)"
 
+    # Math Library Test
+    sqrt_test = math.sqrt(16)
 
-# ╦  ╦╔═╗╦═╗╦╔═╗╔╗ ╦  ╔═╗╔═╗
-# ╚╗╔╝╠═╣╠╦╝║╠═╣╠╩╗║  ║╣ ╚═╗
-#  ╚╝ ╩ ╩╩╚═╩╩ ╩╚═╝╩═╝╚═╝╚═╝
-# ==================================================
-app = __revit__.Application
-uidoc = __revit__.ActiveUIDocument
-doc = __revit__.ActiveUIDocument.Document  # type:Document
+    # JSON Library Test
+    json_test = json.dumps({"Engine": python_engine, "Version": python_version})
 
+    # Print Results
+    print("===== pyRevit Compatibility Test =====")
+    print("Revit Version: {}".format(revit_version))
+    print("pyRevit Version: {}".format(pyrevit_version))
+    print("Python Engine: {} ({})".format(python_engine, python_version))
+    print("Math Library Test: sqrt(16) = {}".format(sqrt_test))
+    print("JSON Library Test: {}".format(json_test))
+    print("=====================================")
 
-# ╔╦╗╔═╗╦╔╗╔
-# ║║║╠═╣║║║║
-# ╩ ╩╩ ╩╩╝╚╝
-# ==================================================
+    print("Compatibility test completed successfully!")
 
-
-# 🤖 Automate Your Boring Work Here
-
-
-# ==================================================
-# 🚫 DELETE BELOW
-from Snippets._customprint import (
-    kit_button_clicked,
-)  # Import Reusable Function from 'lib/Snippets/_customprint.py'
-
-kit_button_clicked(btn_name=__title__)  # Display Default Print Message
+except Exception as ex:
+    print("Compatibility Test Failed: {}".format(ex))
