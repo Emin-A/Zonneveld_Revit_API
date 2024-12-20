@@ -83,10 +83,10 @@
                     </Border.Effect>
 
                     <StackPanel>
-                        <TextBlock x:Name="RevitVersionText" Text="Revit Version: Unknown" Foreground="#000000" />
-                        <TextBlock x:Name="pyRevitVersionText" Text="pyRevit Version: Unknown" Foreground="#000000" />
-                        <TextBlock x:Name="IronPythonVersionText" Text="IronPython Version: Unknown" Foreground="#000000" />
-                        <TextBlock x:Name="CPythonVersionText" Text="CPython Version: Unknown" Foreground="#000000" />
+                        <TextBlock x:Name="RevitVersionText" Text="Revit Version: Unknown" Foreground="#000000" FontWeight="Bold" Margin="0,5,0,0" />
+                        <TextBlock x:Name="pyRevitVersionText" Text="pyRevit Version: Unknown" Foreground="#000000" FontWeight="Bold" Margin="0,5,0,0" />
+                        <TextBlock x:Name="IronPythonVersionText" Text="IronPython Version: Unknown" Foreground="#000000" FontWeight="Bold" Margin="0,5,0,0"/>
+                        <TextBlock x:Name="CPythonVersionText" Text="CPython Version: Unknown" Foreground="#000000" FontWeight="Bold" Margin="0,5,0,0"/>
                     </StackPanel>
                 </Border>
             </StackPanel>
