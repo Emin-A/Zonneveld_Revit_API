@@ -15,71 +15,123 @@ doc = uidoc.Document
 
 # Workset mapping based on WallType prefix
 WORKSET_MAPPING = {
+    # Grids and Levels-------------------------
+    "ZI": 0,  # Example: 01 Stramien en levels
+    "Zi": 0,  # Example: 01 Stramien en levels
+    "Peil": 0,  # Example: 01 Stramien en levels
+    "Reference": 0,  # Example: 01 Stramien en levels
+    # Foundation Piles-------------------------
+    # "16": 1160,  # Need to change number to 17 or something else not be duplicate Example: 02 Funderingspalen
+    "17": 1160,  # Example: 02 Funderingspalen
+    # Foundation-------------------------------
     "16": 1161,  # Example: 03 Fundering
+    # "Zi": 1161, Change text or number no duplicate for slab edge Example: 03 Fundering
+    "13": 1161,  # Example: 03 Fundering
+    # Floors-----------------------------------
+    # Floor Beams------------------------------
+    "L2": 1163,  # Example: 05 Balklaag vloeren
+    "L6": 1163,  # Example: 05 Balklaag vloeren
+    "windverband": 1163,  # Example: 05 Balklaag vloeren
+    # "16": 1163,  # Change prefix
+    # "21": 1163,  # Change prefix
+    # "22": 1163,  # Change prefix
+    # "28": 1163,  # Change prefix
+    # Walls Exterior---------------------------
     "21": 1164,  # Example: 06 Buitenwanden
-    "L4-S-2": 1164,  # Example: 06 Buitenwanden
+    "L4": 1164,  # Example: 06 Buitenwanden
+    # Walls Interior---------------------------
     "22": 1165,  # Example: 07 Binnenwanden
     "42": 1165,  # Example: 07 Binnenwanden
-    "L4-D-1": 1165,  # Example: 07 Binnenwanden
-    "L4-H": 1165,  # Example: 07 Binnenwanden
-    "L4-K": 1165,  # Example: 07 Binnenwanden
-    "L4-S-1": 1165,  # Example: 07 Binnenwanden
-    # Add other prefixes and their corresponding WorksetId here
+    # Timber Frame Walls-----------------------
+    # Roof Beams-------------------------------
+    # Columns----------------------------------
+    "28": 4796,  # Example: 10 Kolommen
+    # Structural Frames------------------------
+    # Steel Beams------------------------------
+    # Wall Plates------------------------------
+    # Roof Sheating----------------------------
+    # Structural Provisions--------------------
+    # Mass-------------------------------------
+    # Facade and Roof Openings-----------------
+    # Interior Wall Openings-------------------
+    # Point Cloud------------------------------
+    # Clash Test-------------------------------
+    # Topography / Toposurface-----------------
 }
 
 
 def log(message):
+    """Log messages to the console."""
     print(message)
 
 
-def get_workset_id_by_wall_type(wall_type_name):
+def get_workset_id_by_element_type(element_type_name):
+    """Get the appropriate workset ID based on the element type name."""
     for prefix, workset_id in WORKSET_MAPPING.items():
-        if wall_type_name.startswith(prefix):
+        if element_type_name.startswith(prefix):
             return workset_id
     return None
 
 
-def assign_workset(wall, workset_id):
+def assign_workset(element, workset_id):
     try:
         t = Transaction(doc, "Assign Workset")
         t.Start()
-        param = wall.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM)
+        param = element.get_Parameter(BuiltInParameter.ELEM_PARTITION_PARAM)
         if param and not param.IsReadOnly:
             param.Set(workset_id)
-            log("Assigned wall {} to WorksetId {}".format(wall.Id, workset_id))
+            log("Assigned element {} to WorksetId {}".format(element.Id, workset_id))
         else:
             log(
-                "Workset parameter is missing or read-only for wall {}.".format(wall.Id)
+                "Workset parameter is missing or read-only for element {}.".format(
+                    element.Id
+                )
             )
         t.Commit()
     except Exception as e:
-        log("Failed to assign WorksetId to wall {}: {}".format(wall.Id, e))
+        log("Failed to assign WorksetId to element {}: {}".format(element.Id, e))
 
 
-def process_walls():
-    log("Processing all walls...")
-    walls = (
-        FilteredElementCollector(doc)
-        .OfCategory(BuiltInCategory.OST_Walls)
-        .WhereElementIsNotElementType()
-    )
-    if not walls:
-        log("No walls found in the document.")
-        return
+def process_elements():
+    """Process elements across multiple categories and assign worksets."""
+    # Define categories to process
+    categories = [
+        BuiltInCategory.OST_Grids,  # Grids
+        BuiltInCategory.OST_Levels,  # Levels
+        BuiltInCategory.OST_ReferencePlanes,  # ReferencePlanes
+        BuiltInCategory.OST_Walls,  # Walls
+        BuiltInCategory.OST_Floors,  # Floors
+        BuiltInCategory.OST_Roofs,  # Roofs
+        BuiltInCategory.OST_Ceilings,  # Ceilings
+        BuiltInCategory.OST_StructuralFraming,  # Structural Frames
+        BuiltInCategory.OST_StructuralColumns,  # Columns
+        BuiltInCategory.OST_StructuralFoundation,  # Foundation
+    ]
 
-    for wall in walls:
-        wall_type = doc.GetElement(wall.GetTypeId())
-        wall_type_name = wall_type.get_Parameter(
-            BuiltInParameter.ALL_MODEL_TYPE_NAME
-        ).AsString()
-        log("Processing wall ID {}: WallType = {}".format(wall.Id, wall_type_name))
-        workset_id = get_workset_id_by_wall_type(wall_type_name)
-        if workset_id:
-            assign_workset(wall, workset_id)
-        else:
-            log("No matching workset found for wall {}".format(wall.Id))
+    for category in categories:
+        elements = (
+            FilteredElementCollector(doc)
+            .OfCategory(category)
+            .WhereElementIsNotElementType()
+        )
+        for element in elements:
+            element_type = doc.GetElement(element.GetTypeId())
+            element_type_name = element_type.get_Parameter(
+                BuiltInParameter.ALL_MODEL_TYPE_NAME
+            ).AsString()
+            log(
+                "Processing element ID {}: Type = {}".format(
+                    element.Id, element_type_name
+                )
+            )
 
-    log("Manual wall processing complete.")
+            workset_id = get_workset_id_by_element_type(element_type_name)
+            if workset_id:
+                assign_workset(element, workset_id)
+            else:
+                log("No matching workset found for element {}".format(element.Id))
 
 
-process_walls()
+log("Manual workset processing started.")
+process_elements()
+log("Manual workset processing completed.")
