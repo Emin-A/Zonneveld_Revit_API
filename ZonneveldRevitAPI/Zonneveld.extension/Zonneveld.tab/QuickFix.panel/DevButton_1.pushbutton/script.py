@@ -28,6 +28,9 @@ WORKSET_MAPPING = {
     # "Zi": 1161, Change text or number no duplicate for slab edge Example: 03 Fundering
     "13": 1161,  # Example: 03 Fundering
     # Floors-----------------------------------
+    # "13": 1161, # Change prefix Example: 04 Vloeren
+    "23": 1161,  # Example: 04 Vloeren
+    "43": 1161,  # Example: 04 Vloeren
     # Floor Beams------------------------------
     "L2": 1163,  # Example: 05 Balklaag vloeren
     "L6": 1163,  # Example: 05 Balklaag vloeren
@@ -36,6 +39,7 @@ WORKSET_MAPPING = {
     # "21": 1163,  # Change prefix
     # "22": 1163,  # Change prefix
     # "28": 1163,  # Change prefix
+    "Vloer": 1163,  # Change prefix
     # Walls Exterior---------------------------
     "21": 1164,  # Example: 06 Buitenwanden
     "L4": 1164,  # Example: 06 Buitenwanden
@@ -44,17 +48,35 @@ WORKSET_MAPPING = {
     "42": 1165,  # Example: 07 Binnenwanden
     # Timber Frame Walls-----------------------
     # Roof Beams-------------------------------
+    "Dak": 1166,  # Change prefix Example: 09 Dakliggers
     # Columns----------------------------------
     "28": 4796,  # Example: 10 Kolommen
-    # Structural Frames------------------------
+    # Structural Frames (Bracing)--------------
+    # "16": 4791, # Change prefix Example: 11 Gebinten
+    # "21": 4791, # Change prefix Example: 11 Gebinten
+    # "22": 4791, # Change prefix Example: 11 Gebinten
+    # "28": 4791, # Change prefix Example: 11 Gebinten
+    # "L2": 4791, # Change Prefix Example: 11 Gebinten
+    # "L6": 4791, # Change Prefix Example: 11 Gebinten
+    # "windverband": 4791 # Change prefix Example: 11 Gebinten
     # Steel Beams------------------------------
+    # Give different Pefix
     # Wall Plates------------------------------
     # Roof Sheating----------------------------
+    "00": 1167,  # Example: 13 Dakbeschot
+    "27": 1167,  # Example: 13 Dakbeschot
+    "L3": 1167,  # Example: 13 Dakbeschot
     # Structural Provisions--------------------
     # Mass-------------------------------------
+    "Mass": 1173,  # Example: 21 Massa
     # Facade and Roof Openings-----------------
+    "31": 1174,  # Example: 22 Gevel- en dakopeningen
+    "37": 1174,  # Example: 22 Gevel- en dakopeningen
     # Interior Wall Openings-------------------
+    "32": 3447,  # Example: 23 Binnenwandopeningen
     # Point Cloud------------------------------
+    ".rcs": 3581,  # Example: 31 Pointcloud
+    ".rcp": 3581,  # Example: 31 Point Cloud
     # Clash Test-------------------------------
     # Topography / Toposurface-----------------
 }
