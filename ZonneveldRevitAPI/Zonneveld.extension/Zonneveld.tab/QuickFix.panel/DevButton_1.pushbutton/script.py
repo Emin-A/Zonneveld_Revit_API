@@ -20,9 +20,6 @@ WORKSET_MAPPING = {
     "Zi": 0,  # Example: 01 Stramien en levels
     "Peil": 0,  # Example: 01 Stramien en levels
     "Reference": 0,  # Example: 01 Stramien en levels
-    # Foundation Piles-------------------------
-    # "16": 1160,  # Need to change number to 17 or something else not be duplicate Example: 02 Funderingspalen
-    "17": 1160,  # Example: 02 Funderingspalen
     # Foundation-------------------------------
     "16": 1161,  # Example: 03 Fundering
     # "Zi": 1161, Change text or number no duplicate for slab edge Example: 03 Fundering
@@ -120,14 +117,13 @@ def process_elements():
     categories = [
         BuiltInCategory.OST_Grids,  # Grids
         BuiltInCategory.OST_Levels,  # Levels
-        BuiltInCategory.OST_ReferencePlanes,  # ReferencePlanes
+        BuiltInCategory.OST_ReferencePoints_Planes,  # ReferencePlanes
         BuiltInCategory.OST_Walls,  # Walls
         BuiltInCategory.OST_Floors,  # Floors
         BuiltInCategory.OST_Roofs,  # Roofs
         BuiltInCategory.OST_Ceilings,  # Ceilings
-        BuiltInCategory.OST_StructuralFraming,  # Structural Frames
-        BuiltInCategory.OST_StructuralColumns,  # Columns
-        BuiltInCategory.OST_StructuralFoundation,  # Foundation
+        BuiltInCategory.OST_StructuralFoundation,  # StructuralFoundation
+        BuiltInCategory.OST_HiddenStructuralFoundationLines,  # HiddenStructuralFoundationLines
     ]
 
     for category in categories:
