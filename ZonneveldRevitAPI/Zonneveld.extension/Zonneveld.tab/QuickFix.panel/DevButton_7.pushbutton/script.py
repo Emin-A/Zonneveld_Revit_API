@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-__title__ = "Auto Shared Parameters"
+__title__ = "Disallow Framing"
 __doc__ = """Version = 1.0
-Date    = 09.01.2025
+Date    = 20.12.2024
 ________________________________________________________________
 Description:
 
@@ -32,7 +32,6 @@ Author: Emin Avdovic"""
 # ╩╩ ╩╩  ╚═╝╩╚═ ╩ ╚═╝
 # ==================================================
 from Autodesk.Revit.DB import *
-from pyrevit import forms
 
 # .NET Imports
 import clr
@@ -48,7 +47,6 @@ from System.Collections.Generic import List
 app = __revit__.Application
 uidoc = __revit__.ActiveUIDocument
 doc = __revit__.ActiveUIDocument.Document  # type:Document
-rvt_year = int(app.VersionNumber)
 
 
 # ╔╦╗╔═╗╦╔╗╔
@@ -56,9 +54,14 @@ rvt_year = int(app.VersionNumber)
 # ╩ ╩╩ ╩╩╝╚╝
 # ==================================================
 
-# Accress SharedParameterFiles
-sp_file = app.OpenSharedParameterFile()
-if not sp_file:
-    forms.alert(
-        "Shared parameter File not found. Add the Shared Parameter File in Revit and try again."
-    )
+
+# 🤖 Automate Your Boring Work Here
+
+
+# ==================================================
+# 🚫 DELETE BELOW
+from Snippets._customprint import (
+    kit_button_clicked,
+)  # Import Reusable Function from 'lib/Snippets/_customprint.py'
+
+kit_button_clicked(btn_name=__title__)  # Display Default Print Message

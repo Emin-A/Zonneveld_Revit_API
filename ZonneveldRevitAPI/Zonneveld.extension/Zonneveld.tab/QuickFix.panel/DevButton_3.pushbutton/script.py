@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-__title__ = "Button 3"
+__title__ = "Align View to Face"
 __doc__ = """Version = 1.0
 Date    = 20.12.2024
 ________________________________________________________________
 Description:
 
-This is the placeholder for a .pushbutton
-You can use it to start your pyRevit Add-In
+Align the current 3D view to the selected face in Revit.
 
 ________________________________________________________________
 How-To:
@@ -32,22 +31,31 @@ Author: Emin Avdovic"""
 # ╩╩ ╩╩  ╚═╝╩╚═ ╩ ╚═╝
 # ==================================================
 from Autodesk.Revit.DB import *
+from pyrevit import HOST_APP
+from pyrevit import revit, DB, UI
+from pyrevit import forms
 
 # .NET Imports
-import clr
+# import clr
 
-clr.AddReference("System")
-from System.Collections.Generic import List
+# clr.AddReference("RevitAPI")
+# clr.AddReference("RevitServices")
+# clr.AddReference("System")
+# from RevitServices.Persistence import DocumentManager
+# from System.Collections.Generic import List
 
 
 # ╦  ╦╔═╗╦═╗╦╔═╗╔╗ ╦  ╔═╗╔═╗
 # ╚╗╔╝╠═╣╠╦╝║╠═╣╠╩╗║  ║╣ ╚═╗
 #  ╚╝ ╩ ╩╩╚═╩╩ ╩╚═╝╩═╝╚═╝╚═╝
 # ==================================================
-app = __revit__.Application
-uidoc = __revit__.ActiveUIDocument
-doc = __revit__.ActiveUIDocument.Document  # type:Document
 
+# Check for active document and view
+# print("Checking environment...")
+# doc = __revit__.ActiveUIDocument.Document if __revit__.ActiveUIDocument else None
+# uidoc = __revit__.ActiveUIDocument
+# curview = uidoc.ActiveView  # current view
+# app = __revit__.Application
 
 # ╔╦╗╔═╗╦╔╗╔
 # ║║║╠═╣║║║║
@@ -55,13 +63,41 @@ doc = __revit__.ActiveUIDocument.Document  # type:Document
 # ==================================================
 
 
-# 🤖 Automate Your Boring Work Here
+def reorient():
+    # Pick a face
+    face = revit.pick_face()
+
+    if face:
+        with revit.Transaction("Orient to Selected Face"):
+            # Calculate the normal vector
+            if HOST_APP.is_newer_than(2015):
+                normal_vec = face.ComputeNormal(DB.UV(0, 0))
+            else:
+                normal_vec = face.Normal
+
+            # Create the base plane for sketchplane
+            if HOST_APP.is_newer_than(2016):
+                base_plane = DB.Plane.CreateByNormalAndOrigin(normal_vec, face.Origin)
+            else:
+                base_plane = DB.Plane(normal_vec, face.Origin)
+
+            # Create the sketchplane
+            sp = DB.SketchPlane.Create(revit.doc, base_plane)
+
+            # Orient the 3D view to the face
+            revit.active_view.OrientTo(normal_vec.Negate())
+            # Set the sketchplane to active
+            revit.uidoc.ActiveView.SketchPlane = sp
+
+        # Refresh the active view
+        revit.uidoc.RefreshActiveView()
 
 
-# ==================================================
-# 🚫 DELETE BELOW
-from Snippets._customprint import (
-    kit_button_clicked,
-)  # Import Reusable Function from 'lib/Snippets/_customprint.py'
+# Get the current view
+curview = revit.active_view
 
-kit_button_clicked(btn_name=__title__)  # Display Default Print Message
+# Check if the current view is 3D
+if isinstance(curview, DB.View3D):
+    reorient()
+else:
+    forms.alert("You must be on a 3D view for this tool to work.")

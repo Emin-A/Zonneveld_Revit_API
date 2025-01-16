@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-__title__ = "Button 4"
+__title__ = "Allow Framing"
 __doc__ = """Version = 1.0
 Date    = 20.12.2024
 ________________________________________________________________
 Description:
 
-This is the placeholder for a .pushbutton
-You can use it to start your pyRevit Add-In
+Enable join for selected structural framing elements.
 
 ________________________________________________________________
 How-To:
@@ -32,11 +31,13 @@ Author: Emin Avdovic"""
 # ╩╩ ╩╩  ╚═╝╩╚═ ╩ ╚═╝
 # ==================================================
 from Autodesk.Revit.DB import *
+from RevitServices.Persistence import DocumentManager
 
 # .NET Imports
 import clr
 
 clr.AddReference("System")
+clr.AddReference("RevitServices")
 from System.Collections.Generic import List
 
 
@@ -44,9 +45,13 @@ from System.Collections.Generic import List
 # ╚╗╔╝╠═╣╠╦╝║╠═╣╠╩╗║  ║╣ ╚═╗
 #  ╚╝ ╩ ╩╩╚═╩╩ ╩╚═╝╩═╝╚═╝╚═╝
 # ==================================================
-app = __revit__.Application
-uidoc = __revit__.ActiveUIDocument
-doc = __revit__.ActiveUIDocument.Document  # type:Document
+# app = __revit__.Application
+# uidoc = __revit__.ActiveUIDocument
+# doc = __revit__.ActiveUIDocument.Document  # type:Document
+
+# Get the active document
+doc = DocumentManager.Instance.CurrentDBDocument
+uidoc = DocumentManager.Instance.CurrentUIApplication.ActiveUIDocument
 
 
 # ╔╦╗╔═╗╦╔╗╔
@@ -54,14 +59,40 @@ doc = __revit__.ActiveUIDocument.Document  # type:Document
 # ╩ ╩╩ ╩╩╝╚╝
 # ==================================================
 
+# Collect selected elements
+selected_ids = uidoc.Selection.GetElementIds()
+if not selected_ids:
+    print("No elements selected. Please select structural framing elements.")
+    sys.exit()
 
-# 🤖 Automate Your Boring Work Here
+selected_elements = [doc.GetElement(el_id) for el_id in selected_ids]
 
+# Filter for structural framing elements
+framing_elements = [
+    e
+    for e in selected_elements
+    if e.Category and e.Category.Id == ElementId(BuiltInCategory.OST_StructuralFraming)
+]
+
+if not framing_elements:
+    print("No structural framing elements selected. Please select valid elements.")
+    sys.exit()
+
+# Enable join for all framing elements
+t = Transaction(doc, "Enable Join for Structural Framing")
+t.Start()
+
+for element in framing_elements:
+    try:
+        StructuralFramingUtils.AllowJoinAtEnd(element, 0)  # Start end
+        StructuralFramingUtils.AllowJoinAtEnd(element, 1)  # End end
+        print("Join enabled for element with ID: {0}".format(element.Id))
+    except Exception as e:
+        print(
+            "Failed to enable join for element with ID {0}: {1}".format(element.Id, e)
+        )
+
+t.Commit()
+print("Join operation completed successfully")
 
 # ==================================================
-# 🚫 DELETE BELOW
-from Snippets._customprint import (
-    kit_button_clicked,
-)  # Import Reusable Function from 'lib/Snippets/_customprint.py'
-
-kit_button_clicked(btn_name=__title__)  # Display Default Print Message
