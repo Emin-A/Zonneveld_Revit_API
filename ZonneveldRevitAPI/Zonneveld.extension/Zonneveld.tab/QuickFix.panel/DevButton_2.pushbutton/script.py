@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__title__ = "Auto Shared Parameters"
+__title__ = "Auto Params"
 __doc__ = """Version = 1.0
 Date    = 09.01.2025
 ________________________________________________________________

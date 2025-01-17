@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__title__ = "Align View to Face"
+__title__ = "Align View"
 __doc__ = """Version = 1.0
 Date    = 20.12.2024
 ________________________________________________________________

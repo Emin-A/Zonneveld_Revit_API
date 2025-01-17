@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__title__ = "Select All Objects Of Selected Type"
+__title__ = "Select Same"
 __doc__ = """Version = 1.0
 Date    = 17.01.2025
 ________________________________________________________________
