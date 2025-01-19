@@ -31,11 +31,13 @@ Author: Emin Avdovic"""
 # ╩╩ ╩╩  ╚═╝╩╚═ ╩ ╚═╝
 # ==================================================
 from Autodesk.Revit.DB import *
-from Autodesk.Revit.DB.Structure import StructuralFramingUtils
+from Autodesk.Revit.UI import *
 from pyrevit import forms
+import sys
 
 # .NET Imports
 import clr
+import time
 
 clr.AddReference("RevitAPI")
 clr.AddReference("RevitAPIUI")
@@ -48,109 +50,58 @@ clr.AddReference("RevitAPIUI")
 # doc = __revit__.ActiveUIDocument.Document  # type:Document
 
 # Get the current Revit document and UI document
-app = __revit__.Application
-doc = __revit__.ActiveUIDocument.Document
+uiapp = __revit__.ActiveUIDocument.Application
 uidoc = __revit__.ActiveUIDocument
-selection_ids = uidoc.Selection.GetElementIds()
+doc = uidoc.Document
 
-# Conversion factors
-FEET_TO_MM = 304.8
-MM_TO_FEET = 1 / FEET_TO_MM
+# Use UIApplication for UI-level commands
+uiapp = UIApplication(doc.Application)
 
 # ╔╦╗╔═╗╦╔╗╔
 # ║║║╠═╣║║║║
 # ╩ ╩╩ ╩╩╝╚╝
 # ==================================================
 # Validate selection
+selection_ids = uidoc.Selection.GetElementIds()
 if not selection_ids:
-    forms.alert(
-        "No elements selected. Please select structural framing elements.",
-        exitscript=True,
-    )
+    forms.alert("Please select structural beams or columns.")
+    sys.exit()
 
-# Filter for structural framing elements
+# Get the selected elements
 selected_elements = [doc.GetElement(el_id) for el_id in selection_ids]
-framing_elements = [
-    e
-    for e in selected_elements
-    if e.Category and e.Category.Id == ElementId(BuiltInCategory.OST_StructuralFraming)
-]
+
+# Filter only structural framing elements (beams/columns)
+framing_elements = []
+for e in selected_elements:
+    if e.Category and e.Category.Id in [
+        ElementId(BuiltInCategory.OST_StructuralFraming),
+        ElementId(BuiltInCategory.OST_StructuralColumns),
+    ]:
+        framing_elements.append(e)
 
 if not framing_elements:
+    forms.alert("No structural beams or columns selected.")
+    sys.exit()
+
+try:
+    # Ensure the selected elements remain active before running the command
+    uidoc.Selection.SetElementIds(selection_ids)
+
+    # Add a slight delay to allow Revit to process the selection
+    time.sleep(0.5)
+
+    # Inform the user
     forms.alert(
-        "No structural framing elements selected. Operation cancelled.", exitscript=True
+        "Beam/Column Join tool is now active. Click on a beam to adjust the joins."
     )
 
-# Prompt user for join type
-join_options = ["Butt", "Miter", "Square Off"]
-selected_join = forms.ask_for_one_item(
-    join_options,
-    default="Butt",
-    prompt="Select the join type to apply:",
-    title="Join Options",
-)
+    # Run the command interactively by selecting the command from Revit's UI
+    command_id = RevitCommandId.LookupPostableCommandId(PostableCommand.CutGeometry)
+    uiapp.PostCommand(command_id)
 
-if not selected_join:
-    forms.alert("No join type selected. Operation cancelled.", exitscript=True)
+    print(
+        "Beam/Column Join tool has been invoked. Click on a beam to adjust the joins."
+    )
 
-# Start transaction
-t = Transaction(doc, "Apply Beam Join Options")
-t.Start()
-
-joined_count = 0
-
-for i, element1 in enumerate(framing_elements):
-    for j, element2 in enumerate(framing_elements):
-        if i >= j:
-            continue
-
-        try:
-            # Attempt to join geometry
-            if not JoinGeometryUtils.AreElementsJoined(doc, element1, element2):
-                JoinGeometryUtils.JoinGeometry(doc, element1, element2)
-                joined_count += 1
-                print(
-                    "Successfully joined beams: {0} and {1}".format(
-                        element1.Id, element2.Id
-                    )
-                )
-
-                # Apply join type logic (placeholder for specific behaviors)
-                if selected_join == "Butt":
-                    print(
-                        "Applied 'Butt' join to beams: {0} and {1}".format(
-                            element1.Id, element2.Id
-                        )
-                    )
-                elif selected_join == "Miter":
-                    print(
-                        "Applied 'Miter' join to beams: {0} and {1}".format(
-                            element1.Id, element2.Id
-                        )
-                    )
-                elif selected_join == "Square Off":
-                    print(
-                        "Applied 'Square Off' join to beams: {0} and {1}".format(
-                            element1.Id, element2.Id
-                        )
-                    )
-            else:
-                print(
-                    "Beams already joined: {0} and {1}".format(element1.Id, element2.Id)
-                )
-
-        except Exception as e:
-            print(
-                "Failed to join beams {0} and {1}: {2}".format(
-                    element1.Id, element2.Id, e
-                )
-            )
-
-# Commit transaction
-t.Commit()
-
-# Feedback
-if joined_count > 0:
-    print("Operation completed successfully. {0} joins made.".format(joined_count))
-else:
-    print("No joins were made. Ensure beams are intersecting or close enough.")
+except Exception as e:
+    print("Failed to invoke Beam/Column Join tool: {0}".format(e))
