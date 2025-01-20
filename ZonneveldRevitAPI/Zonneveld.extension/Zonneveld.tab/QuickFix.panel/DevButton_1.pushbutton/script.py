@@ -942,10 +942,10 @@ def process_elements():
         # BuiltInCategory.OST_WallFoundationAnalytical,  # Wall Foundation Analytical
         # BuiltInCategory.OST_FoundationSlabAnalytical,  # Foundation Slab Analytical
         # BuiltInCategory.OST_EdgeSlab,  # Slab Edge
-        # BuiltInCategory.OST_Columns,  # Columns
+        BuiltInCategory.OST_Columns,  # Columns
         # BuiltInCategory.OST_ColumnsHiddenLines,  # Columns Hidden Lines
         # BuiltInCategory.OST_ColumnAnalytical,  # Columns Analytical
-        # BuiltInCategory.OST_StructuralColumns,  # Structural Column
+        BuiltInCategory.OST_StructuralColumns,  # Structural Column
         # BuiltInCategory.OST_HiddenStructuralColumnLines,  # Hidden Structural Column
         # BuiltInCategory.OST_StructuralFraming,  # Structural Framing
         # BuiltInCategory.OST_HiddenStructuralFramingLines,  # Hidden Structural Framing Lines
