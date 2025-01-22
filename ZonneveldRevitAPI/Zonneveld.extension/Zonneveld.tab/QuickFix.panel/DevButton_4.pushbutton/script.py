@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__title__ = "Allow Join"
+__title__ = "Join/Unjoin"
 __doc__ = """Version = 1.0
 Date    = 20.12.2024
 ________________________________________________________________
@@ -34,12 +34,13 @@ from Autodesk.Revit.DB import *
 from Autodesk.Revit.DB import (
     FilteredElementCollector,
     BuiltInCategory,
-    ElementCategoryFilter,
-    JoinGeometryUtils,
+    BuiltInParameter,
     Element,
     ElementId,
     Transaction,
     WorksetKind,
+    JoinGeometryUtils,
+    ElementCategoryFilter,
 )
 from Autodesk.Revit.DB import Transaction
 from Autodesk.Revit.UI import *
@@ -78,14 +79,22 @@ from System.Windows.Forms import MessageBox, MessageBoxButtons, MessageBoxIcon
 # Collect all elements in the model
 # collector = FilteredElementCollector(doc).WhereElementIsElementType().ToElements()
 
+
 # ╔╦╗╔═╗╦╔╗╔
 # ║║║╠═╣║║║║
 # ╩ ╩╩ ╩╩╝╚╝
 # ==================================================
 
 
+# Define supported categories using correct integer values
+SUPPORTED_CATEGORIES = [
+    BuiltInCategory.OST_Walls,
+    BuiltInCategory.OST_StructuralFraming,
+]
+
+
 def select_elements():
-    """Prompt user to select elements in Revit."""
+    """Prompt user to select elements in Revit and filter them."""
     selection = uidoc.Selection.GetElementIds()
 
     if len(selection) < 2:
@@ -98,75 +107,124 @@ def select_elements():
         return None
 
     selected_elements = [doc.GetElement(el_id) for el_id in selection]
-    return selected_elements
+    filtered_elements = []
+
+    for el in selected_elements:
+        if el.Category and el.Category.Id.IntegerValue in [
+            int(cat) for cat in SUPPORTED_CATEGORIES
+        ]:
+            filtered_elements.append(el)
+        else:
+            print(
+                "Ignored element with ID:",
+                el.Id,
+                "Category:",
+                el.Category.Name if el.Category else "None",
+            )
+
+    if len(filtered_elements) < 2:
+        MessageBox.Show(
+            "Please select at least two valid walls or beams.",
+            "Selection Error",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning,
+        )
+        return None
+
+    return filtered_elements
 
 
-def filter_walls(elements):
-    """Filter only wall elements from the selection."""
-    walls = [
-        e
-        for e in elements
-        if e.Category and e.Category.Id.IntegerValue == int(BuiltInCategory.OST_Walls)
-    ]
-    return walls
-
-
-def join_or_unjoin_elements(elements):
-    """Join or unjoin multiple selected wall elements."""
-    t = Transaction(doc, "Join/Unjoin Walls")
-    t.Start()
-    joined_count = 0
-    unjoined_count = 0
+def check_existing_joins(elements):
+    """Check which elements are already joined."""
+    joined_elements = []
+    unjoined_elements = []
 
     for i in range(len(elements)):
         for j in range(i + 1, len(elements)):
-            elem1 = elements[i]
-            elem2 = elements[j]
+            try:
+                if JoinGeometryUtils.AreElementsJoined(doc, elements[i], elements[j]):
+                    joined_elements.append((elements[i], elements[j]))
+                else:
+                    unjoined_elements.append((elements[i], elements[j]))
+            except Exception as e:
+                print("Error checking join status:", str(e))
 
-            if JoinGeometryUtils.AreElementsJoined(doc, elem1, elem2):
-                JoinGeometryUtils.UnjoinGeometry(doc, elem1, elem2)
-                unjoined_count += 1
-            else:
-                try:
-                    JoinGeometryUtils.JoinGeometry(doc, elem1, elem2)
-                    joined_count += 1
-                except Exception as e:
-                    MessageBox.Show(
-                        "Error in joining elements: {}".format(str(e)),
-                        "Error",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error,
-                    )
-    t.Commit()
+    return joined_elements, unjoined_elements
 
-    MessageBox.Show(
-        "{} elements joined, {} elements unjoined.".format(
-            joined_count, unjoined_count
-        ),
-        "Operation Completed",
-        MessageBoxButtons.OK,
-        MessageBoxIcon.Information,
-    )
+
+def join_elements(elements):
+    """Join selected elements."""
+    joined = 0
+    failed = 0
+
+    for i in range(len(elements)):
+        for j in range(i + 1, len(elements)):
+            try:
+                if not JoinGeometryUtils.AreElementsJoined(
+                    doc, elements[i], elements[j]
+                ):
+                    JoinGeometryUtils.JoinGeometry(doc, elements[i], elements[j])
+                    print("Joined elements:", elements[i].Id, elements[j].Id)
+                    joined += 1
+            except Exception as e:
+                print("Error joining elements:", elements[i].Id, elements[j].Id, str(e))
+                failed += 1
+
+    return joined, failed
+
+
+def unjoin_elements(elements):
+    """Unjoin selected elements."""
+    unjoined = 0
+    failed = 0
+
+    for i in range(len(elements)):
+        for j in range(i + 1, len(elements)):
+            try:
+                if JoinGeometryUtils.AreElementsJoined(doc, elements[i], elements[j]):
+                    JoinGeometryUtils.UnjoinGeometry(doc, elements[i], elements[j])
+                    print("Unjoined elements:", elements[i].Id, elements[j].Id)
+                    unjoined += 1
+            except Exception as e:
+                print(
+                    "Error unjoining elements:", elements[i].Id, elements[j].Id, str(e)
+                )
+                failed += 1
+
+    return unjoined, failed
 
 
 # Main Execution
 selection = select_elements()
 
 if selection:
-    walls = filter_walls(selection)
-    if len(walls) < 2:
-        MessageBox.Show(
-            "Please select at least two valid wall elements.",
-            "Selection Error",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Warning,
-        )
-    else:
-        join_or_unjoin_elements(walls)
-else:
+    t = Transaction(doc, "Join/Unjoin Elements")
+    t.Start()
+
+    joined_pairs, unjoined_pairs = check_existing_joins(selection)
+
+    joined_count = 0
+    unjoined_count = 0
+    failed_count = 0
+
+    if len(unjoined_pairs) > 0:
+        joined_count, failed_count = join_elements(selection)
+    elif len(joined_pairs) > 0:
+        unjoined_count, failed_count = unjoin_elements(selection)
+
+    t.Commit()
+
     MessageBox.Show(
-        "No valid elements selected.",
-        "Selection Error",
+        "Operation completed:\n"
+        + str(joined_count)
+        + " elements joined.\n"
+        + str(unjoined_count)
+        + " elements unjoined.\n"
+        + str(failed_count)
+        + " elements failed to process.",
+        "Join/Unjoin Summary",
         MessageBoxButtons.OK,
-        MessageBoxIcon.Warning,
+        MessageBoxIcon.Information,
     )
+else:
+    print("No valid elements selected.")
