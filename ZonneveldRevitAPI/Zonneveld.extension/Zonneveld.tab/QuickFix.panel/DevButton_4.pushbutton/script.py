@@ -101,82 +101,71 @@ def select_elements():
     return selected_elements
 
 
-def join_elements(elem1, elem2):
-    """Join two selected elements."""
-    if JoinGeometryUtils.AreElementsJoined(doc, elem1, elem2):
-        MessageBox.Show(
-            "Elements are already joined.",
-            "Join Operation",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Information,
-        )
-        return
-
-    try:
-        JoinGeometryUtils.JoinGeometry(doc, elem1, elem2)
-        MessageBox.Show(
-            "Elements successfully joined.",
-            "Success",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Information,
-        )
-    except Exception as e:
-        MessageBox.Show(
-            "Error in joining elements: {}".format(str(e)),
-            "Error",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Error,
-        )
+def filter_walls(elements):
+    """Filter only wall elements from the selection."""
+    walls = [
+        e
+        for e in elements
+        if e.Category and e.Category.Id.IntegerValue == int(BuiltInCategory.OST_Walls)
+    ]
+    return walls
 
 
-def unjoin_elements(elem1, elem2):
-    """Unjoin two selected elements."""
-    if not JoinGeometryUtils.AreElementsJoined(doc, elem1, elem2):
-        MessageBox.Show(
-            "Elements are not joined.",
-            "Unjoin Operation",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Information,
-        )
-        return
+def join_or_unjoin_elements(elements):
+    """Join or unjoin multiple selected wall elements."""
+    t = Transaction(doc, "Join/Unjoin Walls")
+    t.Start()
+    joined_count = 0
+    unjoined_count = 0
 
-    try:
-        JoinGeometryUtils.UnjoinGeometry(doc, elem1, elem2)
-        MessageBox.Show(
-            "Elements successfully unjoined.",
-            "Success",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Information,
-        )
-    except Exception as e:
-        MessageBox.Show(
-            "Error in unjoining elements: {}".format(str(e)),
-            "Error",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Error,
-        )
+    for i in range(len(elements)):
+        for j in range(i + 1, len(elements)):
+            elem1 = elements[i]
+            elem2 = elements[j]
+
+            if JoinGeometryUtils.AreElementsJoined(doc, elem1, elem2):
+                JoinGeometryUtils.UnjoinGeometry(doc, elem1, elem2)
+                unjoined_count += 1
+            else:
+                try:
+                    JoinGeometryUtils.JoinGeometry(doc, elem1, elem2)
+                    joined_count += 1
+                except Exception as e:
+                    MessageBox.Show(
+                        "Error in joining elements: {}".format(str(e)),
+                        "Error",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error,
+                    )
+    t.Commit()
+
+    MessageBox.Show(
+        "{} elements joined, {} elements unjoined.".format(
+            joined_count, unjoined_count
+        ),
+        "Operation Completed",
+        MessageBoxButtons.OK,
+        MessageBoxIcon.Information,
+    )
 
 
 # Main Execution
 selection = select_elements()
 
-if selection and len(selection) == 2:
-    elem1, elem2 = selection
-
-    t = Transaction(doc, "Join/Unjoin Elements")
-    t.Start()
-
-    # Check if elements are joined; if yes, unjoin; if no, join.
-    if JoinGeometryUtils.AreElementsJoined(doc, elem1, elem2):
-        unjoin_elements(elem1, elem2)
+if selection:
+    walls = filter_walls(selection)
+    if len(walls) < 2:
+        MessageBox.Show(
+            "Please select at least two valid wall elements.",
+            "Selection Error",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning,
+        )
     else:
-        join_elements(elem1, elem2)
-
-    t.Commit()
-
+        join_or_unjoin_elements(walls)
 else:
     MessageBox.Show(
-        "Please select exactly two elements.",
+        "No valid elements selected.",
         "Selection Error",
         MessageBoxButtons.OK,
         MessageBoxIcon.Warning,
