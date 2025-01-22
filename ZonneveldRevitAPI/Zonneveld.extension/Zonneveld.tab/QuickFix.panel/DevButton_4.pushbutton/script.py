@@ -31,16 +31,31 @@ Author: Emin Avdovic"""
 # ╩╩ ╩╩  ╚═╝╩╚═ ╩ ╚═╝
 # ==================================================
 from Autodesk.Revit.DB import *
+from Autodesk.Revit.DB import (
+    FilteredElementCollector,
+    BuiltInCategory,
+    ElementCategoryFilter,
+    JoinGeometryUtils,
+    Element,
+    ElementId,
+    Transaction,
+    WorksetKind,
+)
+from Autodesk.Revit.DB import Transaction
 from Autodesk.Revit.UI import *
+from Autodesk.Revit.UI import TaskDialog
 from pyrevit import forms
-import sys
+
 
 # .NET Imports
-import clr
+import sys
 import time
+import clr
 
+clr.AddReference("System")
 clr.AddReference("RevitAPI")
 clr.AddReference("RevitAPIUI")
+clr.AddReference("System.Windows.Forms")
 
 # ╦  ╦╔═╗╦═╗╦╔═╗╔╗ ╦  ╔═╗╔═╗
 # ╚╗╔╝╠═╣╠╦╝║╠═╣╠╩╗║  ║╣ ╚═╗
@@ -50,58 +65,119 @@ clr.AddReference("RevitAPIUI")
 # doc = __revit__.ActiveUIDocument.Document  # type:Document
 
 # Get the current Revit document and UI document
-uiapp = __revit__.ActiveUIDocument.Application
+# uiapp = __revit__.ActiveUIDocument.Application
+app = __revit__.Application
 uidoc = __revit__.ActiveUIDocument
 doc = uidoc.Document
 
 # Use UIApplication for UI-level commands
-uiapp = UIApplication(doc.Application)
+# uiapp = UIApplication(doc.Application)
+
+from System.Windows.Forms import MessageBox, MessageBoxButtons, MessageBoxIcon
+
+# Collect all elements in the model
+# collector = FilteredElementCollector(doc).WhereElementIsElementType().ToElements()
 
 # ╔╦╗╔═╗╦╔╗╔
 # ║║║╠═╣║║║║
 # ╩ ╩╩ ╩╩╝╚╝
 # ==================================================
-# Validate selection
-selection_ids = uidoc.Selection.GetElementIds()
-if not selection_ids:
-    forms.alert("Please select structural beams or columns.")
-    sys.exit()
 
-# Get the selected elements
-selected_elements = [doc.GetElement(el_id) for el_id in selection_ids]
 
-# Filter only structural framing elements (beams/columns)
-framing_elements = []
-for e in selected_elements:
-    if e.Category and e.Category.Id in [
-        ElementId(BuiltInCategory.OST_StructuralFraming),
-        ElementId(BuiltInCategory.OST_StructuralColumns),
-    ]:
-        framing_elements.append(e)
+def select_elements():
+    """Prompt user to select elements in Revit."""
+    selection = uidoc.Selection.GetElementIds()
 
-if not framing_elements:
-    forms.alert("No structural beams or columns selected.")
-    sys.exit()
+    if len(selection) < 2:
+        MessageBox.Show(
+            "Please select at least two elements to join/unjoin.",
+            "Selection Error",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning,
+        )
+        return None
 
-try:
-    # Ensure the selected elements remain active before running the command
-    uidoc.Selection.SetElementIds(selection_ids)
+    selected_elements = [doc.GetElement(el_id) for el_id in selection]
+    return selected_elements
 
-    # Add a slight delay to allow Revit to process the selection
-    time.sleep(0.5)
 
-    # Inform the user
-    forms.alert(
-        "Beam/Column Join tool is now active. Click on a beam to adjust the joins."
+def join_elements(elem1, elem2):
+    """Join two selected elements."""
+    if JoinGeometryUtils.AreElementsJoined(doc, elem1, elem2):
+        MessageBox.Show(
+            "Elements are already joined.",
+            "Join Operation",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information,
+        )
+        return
+
+    try:
+        JoinGeometryUtils.JoinGeometry(doc, elem1, elem2)
+        MessageBox.Show(
+            "Elements successfully joined.",
+            "Success",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information,
+        )
+    except Exception as e:
+        MessageBox.Show(
+            "Error in joining elements: {}".format(str(e)),
+            "Error",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Error,
+        )
+
+
+def unjoin_elements(elem1, elem2):
+    """Unjoin two selected elements."""
+    if not JoinGeometryUtils.AreElementsJoined(doc, elem1, elem2):
+        MessageBox.Show(
+            "Elements are not joined.",
+            "Unjoin Operation",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information,
+        )
+        return
+
+    try:
+        JoinGeometryUtils.UnjoinGeometry(doc, elem1, elem2)
+        MessageBox.Show(
+            "Elements successfully unjoined.",
+            "Success",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information,
+        )
+    except Exception as e:
+        MessageBox.Show(
+            "Error in unjoining elements: {}".format(str(e)),
+            "Error",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Error,
+        )
+
+
+# Main Execution
+selection = select_elements()
+
+if selection and len(selection) == 2:
+    elem1, elem2 = selection
+
+    t = Transaction(doc, "Join/Unjoin Elements")
+    t.Start()
+
+    # Check if elements are joined; if yes, unjoin; if no, join.
+    if JoinGeometryUtils.AreElementsJoined(doc, elem1, elem2):
+        unjoin_elements(elem1, elem2)
+    else:
+        join_elements(elem1, elem2)
+
+    t.Commit()
+
+else:
+    MessageBox.Show(
+        "Please select exactly two elements.",
+        "Selection Error",
+        MessageBoxButtons.OK,
+        MessageBoxIcon.Warning,
     )
-
-    # Run the command interactively by selecting the command from Revit's UI
-    command_id = RevitCommandId.LookupPostableCommandId(PostableCommand.CutGeometry)
-    uiapp.PostCommand(command_id)
-
-    print(
-        "Beam/Column Join tool has been invoked. Click on a beam to adjust the joins."
-    )
-
-except Exception as e:
-    print("Failed to invoke Beam/Column Join tool: {0}".format(e))

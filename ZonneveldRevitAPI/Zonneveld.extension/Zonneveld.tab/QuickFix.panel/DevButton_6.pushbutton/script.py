@@ -30,7 +30,15 @@ Author: Emin Avdovic"""
 # ║║║║╠═╝║ ║╠╦╝ ║ ╚═╗
 # ╩╩ ╩╩  ╚═╝╩╚═ ╩ ╚═╝
 # ==================================================
-from Autodesk.Revit.DB import *
+# from Autodesk.Revit.DB import *
+from Autodesk.Revit.DB import (
+    Workset,
+    WorksetTable,
+    WorksharingUtils,
+    Transaction,
+    ElementId,
+    WorksetId,
+)
 
 # .NET Imports
 import clr
@@ -60,13 +68,13 @@ from System.Drawing import Point, Size
 # ╚╗╔╝╠═╣╠╦╝║╠═╣╠╩╗║  ║╣ ╚═╗
 #  ╚╝ ╩ ╩╩╚═╩╩ ╩╚═╝╩═╝╚═╝╚═╝
 # ==================================================
-app = __revit__.Application
-uidoc = __revit__.ActiveUIDocument
+# app = __revit__.Application
 # doc = __revit__.ActiveUIDocument.Document  # type:Document
+uidoc = __revit__.ActiveUIDocument
 doc = uidoc.Document
 
 # Check Revit version
-revit_version = __revit__.Application.VersionNumber
+# revit_version = __revit__.Application.VersionNumber
 
 # ╔╦╗╔═╗╦╔╗╔
 # ║║║╠═╣║║║║
@@ -146,29 +154,21 @@ class WorksetForm(Form):
         self.load_existing_worksets()
         self.Controls.Add(self.listbox)
 
-        # Create worksets button (wider)
+        # Create worksets button
         self.create_button = Button()
-        self.create_button.Text = "Create Worksets"
+        self.create_button.Text = "Create Workset"
         self.create_button.Size = Size(150, 30)
         self.create_button.Location = Point(10, 360)
         self.create_button.Click += self.on_create_click
         self.Controls.Add(self.create_button)
 
-        # Delete workset button (wider)
+        # Delete workset button
         self.delete_button = Button()
         self.delete_button.Text = "Delete Workset"
         self.delete_button.Size = Size(150, 30)
         self.delete_button.Location = Point(350, 360)
         self.delete_button.Click += self.on_delete_click
         self.Controls.Add(self.delete_button)
-
-        # Edit workset button (wider)
-        self.edit_button = Button()
-        self.edit_button.Text = "Edit Workset"
-        self.edit_button.Size = Size(150, 30)
-        self.edit_button.Location = Point(510, 360)
-        self.edit_button.Click += self.on_edit_click
-        self.Controls.Add(self.edit_button)
 
         # Make Editable button
         self.make_editable_button = Button()
@@ -213,15 +213,17 @@ class WorksetForm(Form):
             ws.Name
             for ws in FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset)
         ]
-        if any(name in existing_worksets for name in new_worksets):
-            MessageBox.Show("Workset already exists!", "Error", MessageBoxButtons.OK)
-        else:
-            t = Transaction(doc, "Create Worksets")
-            t.Start()
-            for name in new_worksets:
+        for name in new_worksets:
+            if name in existing_worksets:
+                MessageBox.Show(
+                    "Workset already exists!", "Error", MessageBoxButtons.OK
+                )
+            else:
+                t = Transaction(doc, "Create Workset")
+                t.Start()
                 Workset.Create(doc, name)
-            t.Commit()
-            self.load_existing_worksets()
+                t.Commit()
+                self.load_existing_worksets()
 
     def on_delete_click(self, sender, event):
         """Delete selected workset."""
@@ -229,29 +231,43 @@ class WorksetForm(Form):
         if selected_workset:
             t = Transaction(doc, "Delete Workset")
             t.Start()
-            workset = [
-                ws
-                for ws in FilteredWorksetCollector(doc)
-                if ws.Name == selected_workset
-            ][0]
-            doc.Delete(workset.Id)
-            t.Commit()
-            self.load_existing_worksets()
-
-    def on_edit_click(self, sender, event):
-        """Rename workset."""
-        MessageBox.Show("Renaming worksets is not allowed in Revit API.", "Error")
+            try:
+                for ws in FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset):
+                    if ws.Name == selected_workset:
+                        doc.Delete(ElementId(ws.Id.IntegerValue))
+                        break
+                t.Commit()
+                MessageBox.Show("Workset deleted successfully!", "Success")
+                self.load_existing_worksets()
+            except Exception as e:
+                t.RollBack()
+                MessageBox.Show("Error deleting workset: " + str(e), "Error")
 
     def on_make_editable_click(self, sender, event):
         """Make workset editable."""
-        workset = self.listbox.SelectedItem
-        if workset:
-            WorksharingUtils.CheckoutWorksets(doc, [workset.Id])
-            MessageBox.Show("Workset made editable.", "Success")
+        selected_workset = self.listbox.SelectedItem
+        if selected_workset:
+            worksets = [
+                ws
+                for ws in FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset)
+                if ws.Name == selected_workset
+            ]
+            if worksets:
+                WorksharingUtils.CheckoutWorksets(doc, [worksets[0].Id])
+                MessageBox.Show("Workset made editable.", "Success")
 
     def on_make_non_editable_click(self, sender, event):
         """Make workset non-editable."""
-        MessageBox.Show("Workset made non-editable.", "Success")
+        selected_workset = self.listbox.SelectedItem
+        if selected_workset:
+            worksets = [
+                ws
+                for ws in FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset)
+                if ws.Name == selected_workset
+            ]
+            if worksets:
+                WorksharingUtils.RelinquishOwnership(doc, [worksets[0].Id], None)
+                MessageBox.Show("Workset made non-editable.", "Success")
 
     def on_cancel_click(self, sender, event):
         self.Close()
