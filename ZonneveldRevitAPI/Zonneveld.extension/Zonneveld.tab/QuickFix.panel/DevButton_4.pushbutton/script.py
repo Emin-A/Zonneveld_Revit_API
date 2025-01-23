@@ -46,6 +46,7 @@ from Autodesk.Revit.DB import Transaction
 from Autodesk.Revit.UI import *
 from Autodesk.Revit.UI import TaskDialog
 from pyrevit import forms
+from System.Windows.Forms import MessageBox, MessageBoxButtons, MessageBoxIcon
 
 
 # .NET Imports
@@ -74,7 +75,6 @@ doc = uidoc.Document
 # Use UIApplication for UI-level commands
 # uiapp = UIApplication(doc.Application)
 
-from System.Windows.Forms import MessageBox, MessageBoxButtons, MessageBoxIcon
 
 # Collect all elements in the model
 # collector = FilteredElementCollector(doc).WhereElementIsElementType().ToElements()
@@ -89,7 +89,8 @@ from System.Windows.Forms import MessageBox, MessageBoxButtons, MessageBoxIcon
 # Define supported categories using correct integer values
 SUPPORTED_CATEGORIES = [
     BuiltInCategory.OST_Walls,
-    BuiltInCategory.OST_StructuralFraming,
+    BuiltInCategory.OST_StructuralFraming,  # Beams
+    BuiltInCategory.OST_StructuralColumns,  # Columns
 ]
 
 
@@ -124,7 +125,7 @@ def select_elements():
 
     if len(filtered_elements) < 2:
         MessageBox.Show(
-            "Please select at least two valid walls or beams.",
+            "Please select at least two valid walls, beams, or columns.",
             "Selection Error",
             MessageBoxButtons.OK,
             MessageBoxIcon.Warning,
