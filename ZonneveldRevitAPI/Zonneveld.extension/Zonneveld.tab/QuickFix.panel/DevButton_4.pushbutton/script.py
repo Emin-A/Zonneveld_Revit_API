@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__title__ = "Join/Unjoin"
+__title__ = "Join/Unjoin \n Geometry"
 __doc__ = """Version = 1.0
 Date    = 20.12.2024
 ________________________________________________________________
