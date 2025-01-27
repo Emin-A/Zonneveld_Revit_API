@@ -1,11 +1,28 @@
 # -*- coding: utf-8 -*-
-__title__ = "Join/Unjoin \n Analytical"
+__title__ = "Worksets"
 __doc__ = """Version = 1.0
 Date    = 20.12.2024
 ________________________________________________________________
 Description:
 
-Simulates Revit's 'Allow Join' and 'Disallow Join' behaviour for analytical elements.
+Create custom worksets using user-provided names.
+
+________________________________________________________________
+How-To:
+
+1. [Hold ALT + CLICK] on the button to open its source folder.
+You will be able to override this placeholder.
+
+2. Automate Your Boring Work ;)
+
+________________________________________________________________
+TODO:
+[FEATURE] - Describe Your ToDo Tasks Here
+________________________________________________________________
+Last Updates:
+- [15.06.2024] v1.0 Change Description
+- [10.06.2024] v0.5 Change Description
+- [05.06.2024] v0.1 Change Description 
 ________________________________________________________________
 Author: Emin Avdovic"""
 
@@ -15,53 +32,53 @@ Author: Emin Avdovic"""
 # ==================================================
 from Autodesk.Revit.DB import *
 from Autodesk.Revit.DB import (
-    FilteredElementCollector,
-    BuiltInCategory,
-    BuiltInParameter,
-    Element,
-    ElementId,
+    Workset,
     Transaction,
+    FilteredWorksetCollector,
     WorksetKind,
-    JoinGeometryUtils,
-    ElementCategoryFilter,
+    # WorksetId,
+    # WorksetTable,
+    # WorksharingUtils,
+    # ElementId,
+    # RelinquishOptions,
 )
-from Autodesk.Revit.DB import Transaction
-from Autodesk.Revit.UI import *
-from Autodesk.Revit.UI import TaskDialog
-from pyrevit import forms
-from System.Windows.Forms import MessageBox, MessageBoxButtons, MessageBoxIcon
-
 
 # .NET Imports
-import sys
-import time
 import clr
 
 clr.AddReference("System")
 clr.AddReference("RevitAPI")
 clr.AddReference("RevitAPIUI")
 clr.AddReference("System.Windows.Forms")
+clr.AddReference("System.Drawing")
+
+from System.Windows.Forms import (
+    Application,
+    Button,
+    Form,
+    Label,
+    TextBox,
+    ListBox,
+    MessageBox,
+    MessageBoxButtons,
+    MessageBoxIcon,
+    DialogResult,
+    FormBorderStyle,
+    FormStartPosition,
+)
+from System.Drawing import Point, Size
 
 # ╦  ╦╔═╗╦═╗╦╔═╗╔╗ ╦  ╔═╗╔═╗
 # ╚╗╔╝╠═╣╠╦╝║╠═╣╠╩╗║  ║╣ ╚═╗
 #  ╚╝ ╩ ╩╩╚═╩╩ ╩╚═╝╩═╝╚═╝╚═╝
 # ==================================================
-# uidoc = __revit__.ActiveUIDocument
+# app = __revit__.Application
 # doc = __revit__.ActiveUIDocument.Document  # type:Document
-
-# Get the current Revit document and UI document
-# uiapp = __revit__.ActiveUIDocument.Application
-app = __revit__.Application
 uidoc = __revit__.ActiveUIDocument
 doc = uidoc.Document
 
-# Use UIApplication for UI-level commands
-# uiapp = UIApplication(doc.Application)
-
-
-# Collect all elements in the model
-# collector = FilteredElementCollector(doc).WhereElementIsElementType().ToElements()
-
+# Check Revit version
+# revit_version = __revit__.Application.VersionNumber
 
 # ╔╦╗╔═╗╦╔╗╔
 # ║║║╠═╣║║║║
@@ -69,95 +86,125 @@ doc = uidoc.Document
 # ==================================================
 
 
-# Supported analytical categories
-ANALYTICAL_CATEGORIES = [
-    BuiltInCategory.OST_WallAnalytical,  # AnalyticalWalls
-    BuiltInCategory.OST_BeamAnalytical,  # AnalyticalBeams
-    BuiltInCategory.OST_ColumnAnalytical,  # AnalyticalColumns
-]
+# Function to show input dialog for creating a workset
+def input_dialog(title, prompt, default_value=""):
+    form = Form()
+    form.Text = title
+    form.Width = 400
+    form.Height = 180
+    form.StartPosition = FormStartPosition.CenterScreen
+    form.FormBorderStyle = FormBorderStyle.FixedDialog  # Non-resizable window
+
+    label = Label()
+    label.Text = prompt
+    label.Location = Point(10, 10)
+    label.Width = 360
+    form.Controls.Add(label)
+
+    textbox = TextBox()
+    textbox.Text = default_value
+    textbox.Location = Point(10, 40)
+    textbox.Width = 360
+    form.Controls.Add(textbox)
+
+    button_ok = Button()
+    button_ok.Text = "OK"
+    button_ok.Location = Point(80, 90)
+    button_ok.DialogResult = DialogResult.OK
+    form.Controls.Add(button_ok)
+
+    button_cancel = Button()
+    button_cancel.Text = "Cancel"
+    button_cancel.Location = Point(200, 90)
+    button_cancel.DialogResult = DialogResult.Cancel
+    form.Controls.Add(button_cancel)
+
+    form.AcceptButton = button_ok
+    form.CancelButton = button_cancel
+
+    result = form.ShowDialog()
+    if result == DialogResult.OK:
+        return textbox.Text
+    return None
 
 
-# Function to select analytical elements
-def select_analytical_elements():
-    selection = uidoc.Selection.GetElementIds()
-    if len(selection) < 1:
-        MessageBox.Show(
-            "Please select at least one analytical element.",
-            "Selection Error",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Warning,
-        )
-        return None
+# Workset management form
+class WorksetForm(Form):
+    def __init__(self):
+        self.Text = "Manage Worksets"
+        self.Width = 500
+        self.Height = 450
+        self.StartPosition = FormStartPosition.CenterScreen
+        self.FormBorderStyle = FormBorderStyle.FixedDialog  # Non-resizable window
 
-    selected_elements = [doc.GetElement(el_id) for el_id in selection]
+        # Label for existing worksets
+        self.label = Label()
+        self.label.Text = "Existing Worksets:"
+        self.label.Location = Point(10, 10)
+        self.label.Width = 200
+        self.Controls.Add(self.label)
 
-    # Filter elements by analytical categories
-    analytical_elements = [
-        el
-        for el in selected_elements
-        if el.Category
-        and el.Category.Id.IntegerValue in [int(cat) for cat in ANALYTICAL_CATEGORIES]
-    ]
+        # Listbox for displaying existing worksets
+        self.listbox = ListBox()
+        self.listbox.Width = 460
+        self.listbox.Height = 300
+        self.listbox.Location = Point(10, 40)
+        self.load_existing_worksets()
+        self.Controls.Add(self.listbox)
 
-    if not analytical_elements:
-        MessageBox.Show(
-            "No valid analytical elements selected.\nPlease select analytical walls, beams, or columns.",
-            "Selection Error",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Warning,
-        )
-        return None
+        # Create workset button
+        self.create_button = Button()
+        self.create_button.Text = "Create Workset"
+        self.create_button.Size = Size(150, 30)
+        self.create_button.Location = Point(30, 360)
+        self.create_button.Click += self.on_create_click
+        self.Controls.Add(self.create_button)
 
-    return analytical_elements
+        # Cancel button
+        self.cancel_button = Button()
+        self.cancel_button.Text = "Cancel"
+        self.cancel_button.Size = Size(150, 30)
+        self.cancel_button.Location = Point(250, 360)
+        self.cancel_button.Click += self.on_cancel_click
+        self.Controls.Add(self.cancel_button)
 
+    def load_existing_worksets(self):
+        """Load existing worksets into the listbox."""
+        self.listbox.Items.Clear()
+        existing_worksets = [
+            ws.Name
+            for ws in FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset)
+        ]
+        for ws in existing_worksets:
+            self.listbox.Items.Add(ws)
 
-# Function to toggle join status
-def toggle_join_status(elements):
-    joined_elements = []
-    unjoined_elements = []
-    failed_elements = []
-
-    t = Transaction(doc, "Toggle Join Status")
-    t.Start()
-
-    for element in elements:
-        analytical_model = element.GetAnalyticalModel()
-        if analytical_model and analytical_model.IsJoined:
+    def on_create_click(self, sender, event):
+        """Create a new workset."""
+        workset_name = input_dialog("Create Workset", "Enter new workset name:")
+        if workset_name:
+            t = Transaction(doc, "Create Workset")
+            t.Start()
             try:
-                analytical_model.DisallowJoin()
-                unjoined_elements.append(element.Id)
+                Workset.Create(doc, workset_name)
+                t.Commit()
+                MessageBox.Show(
+                    "Workset '{}' created successfully.".format(workset_name), "Success"
+                )
+                self.load_existing_worksets()
             except Exception as e:
-                failed_elements.append(element.Id)
-                print("Error disallowing join:", element.Id, str(e))
-        else:
-            try:
-                analytical_model.AllowJoin()
-                joined_elements.append(element.Id)
-            except Exception as e:
-                failed_elements.append(element.Id)
-                print("Error allowing join:", element.Id, str(e))
+                t.RollBack()
+                MessageBox.Show(
+                    "Error creating workset: " + str(e),
+                    "Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error,
+                )
 
-    t.Commit()
-
-    # Summary popup
-    MessageBox.Show(
-        "Operation completed:\n"
-        + str(len(joined_elements))
-        + " elements joined.\n"
-        + str(len(unjoined_elements))
-        + " elements unjoined.\n"
-        + str(len(failed_elements))
-        + " elements failed to process.",
-        "Join/Unjoin Analytical Summary",
-        MessageBoxButtons.OK,
-        MessageBoxIcon.Information,
-    )
+    def on_cancel_click(self, sender, event):
+        """Close the form."""
+        self.Close()
 
 
-# Main Execution
-selection = select_analytical_elements()
-
-if selection:
-    toggle_join_status(selection)
-else:
-    print("No valid analytical elements selected.")
+# Run the form
+form = WorksetForm()
+Application.Run(form)
