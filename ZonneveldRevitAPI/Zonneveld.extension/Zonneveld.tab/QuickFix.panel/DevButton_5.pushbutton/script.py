@@ -28,7 +28,6 @@ clr.AddReference("RevitAPIUI")
 #  ╚╝ ╩ ╩╩╚═╩╩ ╩╚═╝╩═╝╚═╝╚═╝
 # ==================================================
 # Get Revit document and UI document
-# app = __revit__.Application
 uidoc = __revit__.ActiveUIDocument
 doc = uidoc.Document
 
@@ -50,31 +49,64 @@ def select_analytical_elements():
     selection = uidoc.Selection.GetElementIds()
 
     if len(selection) < 2:
-        TaskDialog.Show(
-            "Selection Error",
-            "Please select at least two analytical elements to join/unjoin.",
+        print(
+            "Selection Error: Please select at least two analytical elements to join/unjoin."
         )
         return None
 
     selected_elements = [doc.GetElement(el_id) for el_id in selection]
     analytical_elements = []
 
-    print("Selected Elements:")
     for el in selected_elements:
-        category_name = el.Category.Name if el.Category else "None"
-        print("Element ID:", el.Id, "Category:", category_name)
-
+        # Check if the element is in a supported category
         if el.Category and el.Category.Id.IntegerValue in [
             int(cat) for cat in ANALYTICAL_CATEGORIES
         ]:
-            analytical_elements.append(el)
-        else:
-            print("Ignored element:", el.Id, "Category:", category_name)
+            analytical_model = (
+                el.GetAnalyticalModel() if hasattr(el, "GetAnalyticalModel") else None
+            )
 
-    if len(analytical_elements) < 2:
-        TaskDialog.Show(
-            "Selection Error",
-            "Please select at least two valid analytical walls, beams, or columns.",
+            # Log detailed information for debugging
+            print(
+                "Selected Analytical Element:",
+                el.Id,
+                el.Category.Name if el.Category else "No Category",
+                "Analytical Model:",
+                "Exists" if analytical_model else "None",
+                "Analyze As:",
+                (
+                    el.LookupParameter("Analyze As").AsString()
+                    if el.LookupParameter("Analyze As")
+                    else "Not Set"
+                ),
+                "Enable Analytical Model:",
+                (
+                    el.LookupParameter("Enable Analytical Model").AsString()
+                    if el.LookupParameter("Enable Analytical Model")
+                    else "Not Set"
+                ),
+            )
+
+            if analytical_model:
+                analytical_elements.append(el)
+            else:
+                print(
+                    "Invalid analytical element:",
+                    el.Id,
+                    el.Category.Name,
+                    "Analytical Model: None",
+                )
+        else:
+            print(
+                "Invalid analytical element:",
+                el.Id,
+                el.Category.Name if el.Category else "No Category",
+                "Analytical Model: None",
+            )
+
+    if not analytical_elements:
+        print(
+            "No valid analytical elements selected. Ensure the elements have analytical models enabled in Revit."
         )
         return None
 
@@ -99,41 +131,42 @@ def process_analytical_join_unjoin(elements):
             analytical_model1 = elem1.GetAnalyticalModel()
             analytical_model2 = elem2.GetAnalyticalModel()
 
-            if not analytical_model1 or not analytical_model2:
-                print(
-                    "Skipping elements due to missing analytical model:",
-                    elem1.Id,
-                    elem2.Id,
-                )
-                continue
-
-            print("Processing elements:", elem1.Id, elem2.Id)
-
-            try:
-                if analytical_model1.HasAnalyticalAssociation(analytical_model2):
-                    analytical_model1.RemoveAnalyticalAssociation(analytical_model2)
-                    analytical_model2.RemoveAnalyticalAssociation(analytical_model1)
-                    unjoined_elements.append((elem1.Id, elem2.Id))
-                    print("Unjoined:", elem1.Id, elem2.Id)
-                else:
-                    analytical_model1.AddAnalyticalAssociation(analytical_model2)
-                    analytical_model2.AddAnalyticalAssociation(analytical_model1)
-                    joined_elements.append((elem1.Id, elem2.Id))
-                    print("Joined:", elem1.Id, elem2.Id)
-
-            except Exception as e:
+            if analytical_model1 and analytical_model2:
+                try:
+                    # Add or remove association between analytical models
+                    if analytical_model1.HasAnalyticalAssociation(analytical_model2):
+                        analytical_model1.RemoveAnalyticalAssociation(analytical_model2)
+                        unjoined_elements.append((elem1.Id, elem2.Id))
+                    else:
+                        analytical_model1.AddAnalyticalAssociation(analytical_model2)
+                        joined_elements.append((elem1.Id, elem2.Id))
+                except Exception as e:
+                    failed_elements.append((elem1.Id, elem2.Id))
+                    print(
+                        "Error processing analytical join:", elem1.Id, elem2.Id, str(e)
+                    )
+            else:
                 failed_elements.append((elem1.Id, elem2.Id))
-                print("Error processing analytical join:", elem1.Id, elem2.Id, str(e))
+                print("Invalid analytical models for elements:", elem1.Id, elem2.Id)
 
     t.Commit()
 
-    TaskDialog.Show(
-        "Join/Unjoin Analytical Summary",
+    # Display results in console
+    print(
         "Operation completed:\n"
         + str(len(joined_elements))
         + " elements joined.\n"
         + str(len(unjoined_elements))
         + " elements unjoined.\n"
         + str(len(failed_elements))
-        + " elements failed to process.",
+        + " elements failed to process."
     )
+
+
+# Main Execution
+selection = select_analytical_elements()
+
+if selection:
+    process_analytical_join_unjoin(selection)
+else:
+    print("No valid analytical elements selected.")
