@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-__title__ = "Join/Unjoin \n Geometry"
+__title__ = "Align Box"
 __doc__ = """Version = 1.0
 Date    = 20.12.2024
 ________________________________________________________________
 Description:
 
-Enable join for selected structural framing elements.
+Aligns the section box of the current 3D view to the selected face.
 
 ________________________________________________________________
 How-To:
@@ -31,201 +31,82 @@ Author: Emin Avdovic"""
 # ╩╩ ╩╩  ╚═╝╩╚═ ╩ ╚═╝
 # ==================================================
 from Autodesk.Revit.DB import *
-from Autodesk.Revit.DB import (
-    FilteredElementCollector,
-    BuiltInCategory,
-    BuiltInParameter,
-    Element,
-    ElementId,
-    Transaction,
-    WorksetKind,
-    JoinGeometryUtils,
-    ElementCategoryFilter,
-)
-from Autodesk.Revit.DB import Transaction
-from Autodesk.Revit.UI import *
-from Autodesk.Revit.UI import TaskDialog
+from pyrevit.framework import Math
+from pyrevit import revit, DB, UI
 from pyrevit import forms
-from System.Windows.Forms import MessageBox, MessageBoxButtons, MessageBoxIcon
-
 
 # .NET Imports
-import sys
-import time
 import clr
 
 clr.AddReference("System")
-clr.AddReference("RevitAPI")
-clr.AddReference("RevitAPIUI")
-clr.AddReference("System.Windows.Forms")
+from System.Collections.Generic import List
+
 
 # ╦  ╦╔═╗╦═╗╦╔═╗╔╗ ╦  ╔═╗╔═╗
 # ╚╗╔╝╠═╣╠╦╝║╠═╣╠╩╗║  ║╣ ╚═╗
 #  ╚╝ ╩ ╩╩╚═╩╩ ╩╚═╝╩═╝╚═╝╚═╝
 # ==================================================
-# uidoc = __revit__.ActiveUIDocument
-# doc = __revit__.ActiveUIDocument.Document  # type:Document
-
-# Get the current Revit document and UI document
-# uiapp = __revit__.ActiveUIDocument.Application
 app = __revit__.Application
 uidoc = __revit__.ActiveUIDocument
-doc = uidoc.Document
-
-# Use UIApplication for UI-level commands
-# uiapp = UIApplication(doc.Application)
-
-
-# Collect all elements in the model
-# collector = FilteredElementCollector(doc).WhereElementIsElementType().ToElements()
+doc = __revit__.ActiveUIDocument.Document  # type:Document
 
 
 # ╔╦╗╔═╗╦╔╗╔
 # ║║║╠═╣║║║║
 # ╩ ╩╩ ╩╩╝╚╝
 # ==================================================
+def orient_section_box(view):
+    try:
+        # Prompt user to pick a face
+        face = revit.pick_face()
 
+        # Get the section box and face normal
+        box = view.GetSectionBox()
+        norm = face.ComputeNormal(DB.UV(0, 0)).Normalize()
+        box_normal = box.Transform.Basis[0].Normalize()
 
-# Define supported categories using correct integer values
-SUPPORTED_CATEGORIES = [
-    BuiltInCategory.OST_Walls,
-    BuiltInCategory.OST_StructuralFraming,  # Beams
-    BuiltInCategory.OST_StructuralColumns,  # Columns
-]
-
-
-def select_elements():
-    """Prompt user to select elements in Revit and filter them."""
-    selection = uidoc.Selection.GetElementIds()
-
-    if len(selection) < 2:
-        MessageBox.Show(
-            "Please select at least two elements to join/unjoin.",
-            "Selection Error",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Warning,
+        # Calculate rotation angle and axis
+        angle = norm.AngleTo(box_normal)
+        axis = DB.XYZ(0, 0, 1.0)
+        origin = DB.XYZ(
+            box.Min.X + (box.Max.X - box.Min.X) / 2,
+            box.Min.Y + (box.Max.Y - box.Min.Y) / 2,
+            0.0,
         )
-        return None
 
-    selected_elements = [doc.GetElement(el_id) for el_id in selection]
-    filtered_elements = []
-
-    for el in selected_elements:
-        if el.Category and el.Category.Id.IntegerValue in [
-            int(cat) for cat in SUPPORTED_CATEGORIES
-        ]:
-            filtered_elements.append(el)
-        else:
-            print(
-                "Ignored element with ID:",
-                el.Id,
-                "Category:",
-                el.Category.Name if el.Category else "None",
+        # Determine rotation direction
+        if norm.Y * box_normal.X < 0:
+            rotation = DB.Transform.CreateRotationAtPoint(
+                axis, Math.PI / 2 - angle, origin
             )
+        else:
+            rotation = DB.Transform.CreateRotationAtPoint(axis, angle, origin)
 
-    if len(filtered_elements) < 2:
-        MessageBox.Show(
-            "Please select at least two valid walls, beams, or columns.",
-            "Selection Error",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Warning,
+        # Apply the rotation to the section box
+        box.Transform = box.Transform.Multiply(rotation)
+
+        # Commit the changes
+        with revit.Transaction("Orient Section Box to Face"):
+            view.SetSectionBox(box)
+            revit.uidoc.RefreshActiveView()
+
+        print("Section box successfully oriented to the selected face.")
+
+    except Exception as e:
+        forms.alert("An error occurred: {}".format(e), title="Error")
+
+
+# Get the current view
+curview = revit.active_view
+
+# Validate the view and section box status
+if isinstance(curview, DB.View3D):
+    if curview.IsSectionBoxActive:
+        orient_section_box(curview)
+    else:
+        forms.alert(
+            "The section box for the current 3D view is not active.",
+            title="Section Box Inactive",
         )
-        return None
-
-    return filtered_elements
-
-
-def check_existing_joins(elements):
-    """Check which elements are already joined."""
-    joined_elements = []
-    unjoined_elements = []
-
-    for i in range(len(elements)):
-        for j in range(i + 1, len(elements)):
-            try:
-                if JoinGeometryUtils.AreElementsJoined(doc, elements[i], elements[j]):
-                    joined_elements.append((elements[i], elements[j]))
-                else:
-                    unjoined_elements.append((elements[i], elements[j]))
-            except Exception as e:
-                print("Error checking join status:", str(e))
-
-    return joined_elements, unjoined_elements
-
-
-def join_elements(elements):
-    """Join selected elements."""
-    joined = 0
-    failed = 0
-
-    for i in range(len(elements)):
-        for j in range(i + 1, len(elements)):
-            try:
-                if not JoinGeometryUtils.AreElementsJoined(
-                    doc, elements[i], elements[j]
-                ):
-                    JoinGeometryUtils.JoinGeometry(doc, elements[i], elements[j])
-                    print("Joined elements:", elements[i].Id, elements[j].Id)
-                    joined += 1
-            except Exception as e:
-                print("Error joining elements:", elements[i].Id, elements[j].Id, str(e))
-                failed += 1
-
-    return joined, failed
-
-
-def unjoin_elements(elements):
-    """Unjoin selected elements."""
-    unjoined = 0
-    failed = 0
-
-    for i in range(len(elements)):
-        for j in range(i + 1, len(elements)):
-            try:
-                if JoinGeometryUtils.AreElementsJoined(doc, elements[i], elements[j]):
-                    JoinGeometryUtils.UnjoinGeometry(doc, elements[i], elements[j])
-                    print("Unjoined elements:", elements[i].Id, elements[j].Id)
-                    unjoined += 1
-            except Exception as e:
-                print(
-                    "Error unjoining elements:", elements[i].Id, elements[j].Id, str(e)
-                )
-                failed += 1
-
-    return unjoined, failed
-
-
-# Main Execution
-selection = select_elements()
-
-if selection:
-    t = Transaction(doc, "Join/Unjoin Elements")
-    t.Start()
-
-    joined_pairs, unjoined_pairs = check_existing_joins(selection)
-
-    joined_count = 0
-    unjoined_count = 0
-    failed_count = 0
-
-    if len(unjoined_pairs) > 0:
-        joined_count, failed_count = join_elements(selection)
-    elif len(joined_pairs) > 0:
-        unjoined_count, failed_count = unjoin_elements(selection)
-
-    t.Commit()
-
-    MessageBox.Show(
-        "Operation completed:\n"
-        + str(joined_count)
-        + " elements joined.\n"
-        + str(unjoined_count)
-        + " elements unjoined.\n"
-        + str(failed_count)
-        + " elements failed to process.",
-        "Join/Unjoin Summary",
-        MessageBoxButtons.OK,
-        MessageBoxIcon.Information,
-    )
 else:
-    print("No valid elements selected.")
+    forms.alert("You must be in a 3D view for this tool to work.", title="Invalid View")

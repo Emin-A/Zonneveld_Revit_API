@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-__title__ = "Worksets"
+__title__ = "Select Same"
 __doc__ = """Version = 1.0
-Date    = 20.12.2024
+Date    = 17.01.2025
 ________________________________________________________________
 Description:
 
-Create custom worksets using user-provided names.
+Select all elements of the same type as the selected element.
 
 ________________________________________________________________
 How-To:
@@ -31,180 +31,114 @@ Author: Emin Avdovic"""
 # ╩╩ ╩╩  ╚═╝╩╚═ ╩ ╚═╝
 # ==================================================
 from Autodesk.Revit.DB import *
-from Autodesk.Revit.DB import (
-    Workset,
-    Transaction,
-    FilteredWorksetCollector,
-    WorksetKind,
-    # WorksetId,
-    # WorksetTable,
-    # WorksharingUtils,
-    # ElementId,
-    # RelinquishOptions,
-)
+from pyrevit import revit, DB
+from pyrevit import forms
 
 # .NET Imports
 import clr
 
 clr.AddReference("System")
-clr.AddReference("RevitAPI")
-clr.AddReference("RevitAPIUI")
-clr.AddReference("System.Windows.Forms")
-clr.AddReference("System.Drawing")
+from System.Collections.Generic import List
 
-from System.Windows.Forms import (
-    Application,
-    Button,
-    Form,
-    Label,
-    TextBox,
-    ListBox,
-    MessageBox,
-    MessageBoxButtons,
-    MessageBoxIcon,
-    DialogResult,
-    FormBorderStyle,
-    FormStartPosition,
-)
-from System.Drawing import Point, Size
 
 # ╦  ╦╔═╗╦═╗╦╔═╗╔╗ ╦  ╔═╗╔═╗
 # ╚╗╔╝╠═╣╠╦╝║╠═╣╠╩╗║  ║╣ ╚═╗
 #  ╚╝ ╩ ╩╩╚═╩╩ ╩╚═╝╩═╝╚═╝╚═╝
 # ==================================================
-# app = __revit__.Application
-# doc = __revit__.ActiveUIDocument.Document  # type:Document
+app = __revit__.Application
 uidoc = __revit__.ActiveUIDocument
-doc = uidoc.Document
+doc = __revit__.ActiveUIDocument.Document  # type:Document
 
-# Check Revit version
-# revit_version = __revit__.Application.VersionNumber
 
 # ╔╦╗╔═╗╦╔╗╔
 # ║║║╠═╣║║║║
 # ╩ ╩╩ ╩╩╝╚╝
 # ==================================================
 
+# Get active selection
+selection = revit.get_selection()
+if not selection:
+    forms.alert("At least one object must be selected.", exitscript=True)
 
-# Function to show input dialog for creating a workset
-def input_dialog(title, prompt, default_value=""):
-    form = Form()
-    form.Text = title
-    form.Width = 400
-    form.Height = 180
-    form.StartPosition = FormStartPosition.CenterScreen
-    form.FormBorderStyle = FormBorderStyle.FixedDialog  # Non-resizable window
+filtered_elements = []
+model_items = []
+view_specific_items = []
 
-    label = Label()
-    label.Text = prompt
-    label.Location = Point(10, 10)
-    label.Width = 360
-    form.Controls.Add(label)
+# Process each selected element
+for selected_element in selection:
+    # Check if the element is view-specific
+    is_view_specific = selected_element.ViewSpecific
 
-    textbox = TextBox()
-    textbox.Text = default_value
-    textbox.Location = Point(10, 40)
-    textbox.Width = 360
-    form.Controls.Add(textbox)
+    # Get the TypeId or LineStyle Id (for curve elements)
+    if isinstance(selected_element, DB.CurveElement):
+        type_id = selected_element.LineStyle.Id
+    else:
+        type_id = selected_element.GetTypeId()
 
-    button_ok = Button()
-    button_ok.Text = "OK"
-    button_ok.Location = Point(80, 90)
-    button_ok.DialogResult = DialogResult.OK
-    form.Controls.Add(button_ok)
+    # Determine whether to filter by class or category
+    by_class = category_id = None
+    if isinstance(selected_element, DB.Dimension):
+        by_class = DB.Dimension
+    else:
+        category_id = selected_element.Category.Id
 
-    button_cancel = Button()
-    button_cancel.Text = "Cancel"
-    button_cancel.Location = Point(200, 90)
-    button_cancel.DialogResult = DialogResult.Cancel
-    form.Controls.Add(button_cancel)
+    # Collect elements matching the class or category
+    if by_class:
+        same_type_elements = (
+            DB.FilteredElementCollector(revit.doc)
+            .OfClass(by_class)
+            .WhereElementIsNotElementType()
+            .ToElements()
+        )
+    else:
+        same_type_elements = (
+            DB.FilteredElementCollector(revit.doc)
+            .OfCategoryId(category_id)
+            .WhereElementIsNotElementType()
+            .ToElements()
+        )
 
-    form.AcceptButton = button_ok
-    form.CancelButton = button_cancel
+    # Filter elements by type
+    for element in same_type_elements:
+        if isinstance(element, DB.CurveElement):
+            element_type_id = element.LineStyle.Id
+        else:
+            element_type_id = element.GetTypeId()
 
-    result = form.ShowDialog()
-    if result == DialogResult.OK:
-        return textbox.Text
-    return None
+        if element_type_id == type_id:
+            filtered_elements.append(element.Id)
 
-
-# Workset management form
-class WorksetForm(Form):
-    def __init__(self):
-        self.Text = "Manage Worksets"
-        self.Width = 500
-        self.Height = 450
-        self.StartPosition = FormStartPosition.CenterScreen
-        self.FormBorderStyle = FormBorderStyle.FixedDialog  # Non-resizable window
-
-        # Label for existing worksets
-        self.label = Label()
-        self.label.Text = "Existing Worksets:"
-        self.label.Location = Point(10, 10)
-        self.label.Width = 200
-        self.Controls.Add(self.label)
-
-        # Listbox for displaying existing worksets
-        self.listbox = ListBox()
-        self.listbox.Width = 460
-        self.listbox.Height = 300
-        self.listbox.Location = Point(10, 40)
-        self.load_existing_worksets()
-        self.Controls.Add(self.listbox)
-
-        # Create workset button
-        self.create_button = Button()
-        self.create_button.Text = "Create Workset"
-        self.create_button.Size = Size(150, 30)
-        self.create_button.Location = Point(30, 360)
-        self.create_button.Click += self.on_create_click
-        self.Controls.Add(self.create_button)
-
-        # Cancel button
-        self.cancel_button = Button()
-        self.cancel_button.Text = "Cancel"
-        self.cancel_button.Size = Size(150, 30)
-        self.cancel_button.Location = Point(250, 360)
-        self.cancel_button.Click += self.on_cancel_click
-        self.Controls.Add(self.cancel_button)
-
-    def load_existing_worksets(self):
-        """Load existing worksets into the listbox."""
-        self.listbox.Items.Clear()
-        existing_worksets = [
-            ws.Name
-            for ws in FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset)
-        ]
-        for ws in existing_worksets:
-            self.listbox.Items.Add(ws)
-
-    def on_create_click(self, sender, event):
-        """Create a new workset."""
-        workset_name = input_dialog("Create Workset", "Enter new workset name:")
-        if workset_name:
-            t = Transaction(doc, "Create Workset")
-            t.Start()
-            try:
-                Workset.Create(doc, workset_name)
-                t.Commit()
-                MessageBox.Show(
-                    "Workset '{}' created successfully.".format(workset_name), "Success"
+            # Group elements into view-specific or model items
+            if is_view_specific:
+                owner_view_id = element.OwnerViewId
+                owner_view_name = revit.query.get_name(
+                    revit.doc.GetElement(owner_view_id)
                 )
-                self.load_existing_worksets()
-            except Exception as e:
-                t.RollBack()
-                MessageBox.Show(
-                    "Error creating workset: " + str(e),
-                    "Error",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error,
-                )
+                if owner_view_name in view_specific_items:
+                    view_specific_items[owner_view_name].append(element)
+                else:
+                    view_specific_items[owner_view_name] = [element]
+            else:
+                model_items.append(element)
 
-    def on_cancel_click(self, sender, event):
-        """Close the form."""
-        self.Close()
+# Provide feedback
+if len(filtered_elements) == 0:
+    forms.alert("No matching elements found.", exitscript=True)
 
+# Highlight elements in Revit
+revit.get_selection().set_to(filtered_elements)
 
-# Run the form
-form = WorksetForm()
-Application.Run(form)
+# Log results
+if model_items:
+    print("SELECTING MODEL ITEMS:")
+    for model_element in model_items:
+        print(
+            "ID: {0} | Type: {1}".format(model_element.Id, model_element.GetType().Name)
+        )
+
+if view_specific_items:
+    print("VIEW-SPECIFIC ITEMS:")
+    for view_name, elements in view_specific_items.items():
+        print("OWNER VIEW: {0}".format(view_name))
+        for element in elements:
+            print("ID: {0} | Type: {1}".format(element.Id, element.GetType().Name))
