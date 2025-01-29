@@ -38,18 +38,23 @@ doc = revit.doc
 # ╩ ╩╩ ╩╩╝╚╝
 # ==================================================
 
-# Supported analytical categories
-# SUPPORTED_CATEGORIES = [
-#     BuiltInCategory.OST_Walls,  # Physical Walls
-#     BuiltInCategory.OST_StructuralFraming,  # Physical Beams
-#     BuiltInCategory.OST_StructuralColumns,  # Physical Columns
-#     BuiltInCategory.OST_WallAnalytical,  # Analytical Walls
-#     BuiltInCategory.OST_BeamAnalytical,  # Analytical Beams
-#     BuiltInCategory.OST_ColumnAnalytical,  # Analytical Columns
-# ]
+
+# ✅ Define Supported Structural Categories (Physical & Analytical)
+SUPPORTED_CATEGORIES = [
+    BuiltInCategory.OST_Walls,  # Walls (Physical)
+    BuiltInCategory.OST_WallAnalytical,  # Walls (Analytical)
+    BuiltInCategory.OST_StructuralFraming,  # Beams & Bracing (Physical)
+    BuiltInCategory.OST_BeamAnalytical,  # Beams & Bracing (Analytical)
+    BuiltInCategory.OST_StructuralColumns,  # Columns (Physical)
+    BuiltInCategory.OST_ColumnAnalytical,  # Columns (Analytical)
+    BuiltInCategory.OST_Floors,  # Floors (Physical)
+    BuiltInCategory.OST_FloorAnalytical,  # Floors (Analytical)
+    BuiltInCategory.OST_StructuralFoundation,  # Foundations (Physical)
+    BuiltInCategory.OST_FoundationSlabAnalytical,  # Foundations (Analytical)
+]
 
 
-# Function to get valid walls, beams, and columns
+# ✅ Function to Get Selected Structural Elements
 def get_elements():
     selection = uidoc.Selection.GetElementIds()
     if not selection:
@@ -61,37 +66,32 @@ def get_elements():
         el
         for el in selected_elements
         if el.Category
-        and el.Category.Id.IntegerValue
-        in [
-            int(BuiltInCategory.OST_Walls),  # Walls
-            int(BuiltInCategory.OST_StructuralFraming),  # Structural Beams
-            int(BuiltInCategory.OST_StructuralColumns),  # Structural Columns
-        ]
+        and el.Category.Id.IntegerValue in [int(cat) for cat in SUPPORTED_CATEGORIES]
     ]
 
     return elements
 
 
-# Function to check if a wall is joined
+# ✅ Function to Check if a Wall is Joined
 def is_wall_joined(wall):
     return WallUtils.IsWallJoinAllowedAtEnd(
         wall, 0
     ) or WallUtils.IsWallJoinAllowedAtEnd(wall, 1)
 
 
-# Function to check if a beam is joined
+# ✅ Function to Check if a Beam is Joined
 def is_beam_joined(beam):
     return StructuralFramingUtils.IsJoinAllowedAtEnd(
         beam, 0
     ) or StructuralFramingUtils.IsJoinAllowedAtEnd(beam, 1)
 
 
-# Function to check if two elements (columns) are joined using JoinGeometryUtils
+# ✅ Function to Check if a Column is Joined
 def are_columns_joined(doc, col1, col2):
     return JoinGeometryUtils.AreElementsJoined(doc, col1, col2)
 
 
-# Function to toggle wall joins
+# ✅ Function to Toggle Wall Joins
 def toggle_wall_join(walls, allow):
     count = 0
     for wall in walls:
@@ -110,7 +110,7 @@ def toggle_wall_join(walls, allow):
     return count
 
 
-# Function to toggle beam joins
+# ✅ Function to Toggle Beam Joins
 def toggle_beam_join(beams, allow):
     count = 0
     for beam in beams:
@@ -129,7 +129,7 @@ def toggle_beam_join(beams, allow):
     return count
 
 
-# Function to toggle column joins using JoinGeometryUtils
+# ✅ Function to Toggle Column Joins
 def toggle_column_join(doc, columns, allow):
     count = 0
     for i in range(len(columns)):
@@ -151,11 +151,33 @@ def toggle_column_join(doc, columns, allow):
     return count
 
 
-# Main Execution
+# ✅ Function to Toggle Floor & Foundation Joins
+def toggle_floor_join(doc, floors, allow):
+    count = 0
+    for i in range(len(floors)):
+        for j in range(i + 1, len(floors)):
+            floor1 = floors[i]
+            floor2 = floors[j]
+            try:
+                if allow:
+                    if not JoinGeometryUtils.AreElementsJoined(doc, floor1, floor2):
+                        JoinGeometryUtils.JoinGeometry(doc, floor1, floor2)
+                        print("Joined Floors:", floor1.Id, floor2.Id)
+                else:
+                    if JoinGeometryUtils.AreElementsJoined(doc, floor1, floor2):
+                        JoinGeometryUtils.UnjoinGeometry(doc, floor1, floor2)
+                        print("Unjoined Floors:", floor1.Id, floor2.Id)
+                count += 1
+            except Exception as ex:
+                print("Error processing floor join:", str(ex))
+    return count
+
+
+# ✅ Main Execution
 elements = get_elements()
 
 if elements:
-    # Separate Walls, Beams, and Columns
+    # Separate Elements by Category
     walls = [
         el
         for el in elements
@@ -171,56 +193,39 @@ if elements:
         for el in elements
         if el.Category.Id.IntegerValue == int(BuiltInCategory.OST_StructuralColumns)
     ]
+    floors = [
+        el
+        for el in elements
+        if el.Category.Id.IntegerValue == int(BuiltInCategory.OST_Floors)
+    ]
 
     # Detect already joined elements
     joined_walls = [wall for wall in walls if is_wall_joined(wall)]
     joined_beams = [beam for beam in beams if is_beam_joined(beam)]
-    joined_columns = [
-        col1
-        for col1 in columns
-        if any(
-            are_columns_joined(doc, col1, col2)
-            for col2 in columns
-            if col1.Id != col2.Id
-        )
-    ]
+    joined_columns = [col for col in columns]
+    joined_floors = [floor for floor in floors]
 
     # Start transaction
-    t = Transaction(doc, "Join/Unjoin Walls, Beams & Columns")
+    t = Transaction(doc, "Join/Unjoin Structural Elements")
     try:
         t.Start()
 
-        wall_count = 0
-        beam_count = 0
-        column_count = 0
-
-        if joined_walls:
-            wall_count = toggle_wall_join(joined_walls, allow=False)  # Unjoin walls
-        else:
-            wall_count = toggle_wall_join(walls, allow=True)  # Join walls
-
-        if joined_beams:
-            beam_count = toggle_beam_join(joined_beams, allow=False)  # Unjoin beams
-        else:
-            beam_count = toggle_beam_join(beams, allow=True)  # Join beams
-
-        if joined_columns:
-            column_count = toggle_column_join(
-                doc, joined_columns, allow=False
-            )  # Unjoin columns
-        else:
-            column_count = toggle_column_join(doc, columns, allow=True)  # Join columns
+        wall_count = toggle_wall_join(walls, allow=not joined_walls)
+        beam_count = toggle_beam_join(beams, allow=not joined_beams)
+        column_count = toggle_column_join(doc, columns, allow=not joined_columns)
+        floor_count = toggle_floor_join(doc, floors, allow=not joined_floors)
 
         t.Commit()
 
-        # Print summary
+        # Print Summary
         print("Join/Unjoin Summary")
         print("Walls Processed:", wall_count)
         print("Beams Processed:", beam_count)
         print("Columns Processed:", column_count)
+        print("Floors Processed:", floor_count)
 
     except Exception as e:
         print("Transaction failed:", str(e))
         t.RollBack()
 else:
-    print("No valid walls, beams, or columns selected.")
+    print("No valid structural elements selected.")
