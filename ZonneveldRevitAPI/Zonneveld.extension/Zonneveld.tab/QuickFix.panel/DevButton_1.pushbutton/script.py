@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__title__ = "Fix Worksets"
+__title__ = "Fix \n Worksets"
 __doc__ = """This manually assigns correct worksets to all existing elements in the project."""
 
 # Manual Workset Assignment Script

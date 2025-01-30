@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__title__ = "Align Box"
+__title__ = "Align \n Box"
 __doc__ = """Version = 1.0
 Date    = 20.12.2024
 ________________________________________________________________
@@ -38,7 +38,8 @@ from pyrevit import forms
 # .NET Imports
 import clr
 
-clr.AddReference("System")
+clr.AddReference("RevitAPI")
+clr.AddReference("RevitServices")
 from System.Collections.Generic import List
 
 
@@ -47,66 +48,85 @@ from System.Collections.Generic import List
 #  ╚╝ ╩ ╩╩╚═╩╩ ╩╚═╝╩═╝╚═╝╚═╝
 # ==================================================
 app = __revit__.Application
-uidoc = __revit__.ActiveUIDocument
-doc = __revit__.ActiveUIDocument.Document  # type:Document
-
+# uidoc = __revit__.ActiveUIDocument
+# doc = __revit__.ActiveUIDocument.Document  # type:Document
+uidoc = revit.uidoc
+doc = revit.doc
 
 # ╔╦╗╔═╗╦╔╗╔
 # ║║║╠═╣║║║║
 # ╩ ╩╩ ╩╩╝╚╝
 # ==================================================
+# Debug toggle
+DEBUG = False
+
+
+def debug_log(message):
+    """Log debug messages if DEBUG is enabled."""
+    if DEBUG:
+        print(message)
+
+
 def orient_section_box(view):
     try:
         # Prompt user to pick a face
-        face = revit.pick_face()
+        face_reference = uidoc.Selection.PickObject(
+            UI.Selection.ObjectType.Face, "Select a face to align section box."
+        )
+        selected_face = doc.GetElement(
+            face_reference.ElementId
+        ).GetGeometryObjectFromReference(face_reference)
+
+        if not selected_face:
+            raise Exception("Selected object is not a valid face.")
 
         # Get the section box and face normal
-        box = view.GetSectionBox()
-        norm = face.ComputeNormal(DB.UV(0, 0)).Normalize()
-        box_normal = box.Transform.Basis[0].Normalize()
+        section_box = view.GetSectionBox()
+        face_normal = selected_face.ComputeNormal(UV(0, 0)).Normalize()
+        box_normal = section_box.Transform.Basis[0].Normalize()
+
+        debug_log("Face Normal: {0}".format(face_normal))
+        debug_log("Section Box Normal: {0}".format(box_normal))
 
         # Calculate rotation angle and axis
-        angle = norm.AngleTo(box_normal)
-        axis = DB.XYZ(0, 0, 1.0)
-        origin = DB.XYZ(
-            box.Min.X + (box.Max.X - box.Min.X) / 2,
-            box.Min.Y + (box.Max.Y - box.Min.Y) / 2,
-            0.0,
+        angle = face_normal.AngleTo(box_normal)
+        rotation_axis = XYZ(0, 0, 1.0)  # Z-axis rotation
+
+        box_center = XYZ(
+            (section_box.Min.X + section_box.Max.X) / 2,
+            (section_box.Min.Y + section_box.Max.Y) / 2,
+            (section_box.Min.Z + section_box.Max.Z) / 2,
         )
 
-        # Determine rotation direction
-        if norm.Y * box_normal.X < 0:
-            rotation = DB.Transform.CreateRotationAtPoint(
-                axis, Math.PI / 2 - angle, origin
-            )
-        else:
-            rotation = DB.Transform.CreateRotationAtPoint(axis, angle, origin)
+        debug_log("Angle to rotate: {0} radians".format(angle))
+
+        # Determine rotation transformation
+        rotation = Transform.CreateRotationAtPoint(rotation_axis, angle, box_center)
 
         # Apply the rotation to the section box
-        box.Transform = box.Transform.Multiply(rotation)
+        new_transform = section_box.Transform.Multiply(rotation)
+        section_box.Transform = new_transform
 
-        # Commit the changes
-        with revit.Transaction("Orient Section Box to Face"):
-            view.SetSectionBox(box)
-            revit.uidoc.RefreshActiveView()
+        # Commit the changes in a transaction
+        t = Transaction(doc, "Orient Section Box to Face")
+        t.Start()
+        view.SetSectionBox(section_box)
+        t.Commit()
 
-        print("Section box successfully oriented to the selected face.")
+        debug_log("Section box successfully oriented to the selected face.")
 
     except Exception as e:
-        forms.alert("An error occurred: {}".format(e), title="Error")
+        debug_log("Error: {0}".format(e))
 
 
 # Get the current view
 curview = revit.active_view
 
 # Validate the view and section box status
-if isinstance(curview, DB.View3D):
+if isinstance(curview, View3D):
     if curview.IsSectionBoxActive:
         orient_section_box(curview)
     else:
-        forms.alert(
-            "The section box for the current 3D view is not active.",
-            title="Section Box Inactive",
-        )
+        debug_log("The section box for the current 3D view is not active.")
 else:
-    forms.alert("You must be in a 3D view for this tool to work.", title="Invalid View")
+    debug_log("You must be in a 3D view for this tool to work.")

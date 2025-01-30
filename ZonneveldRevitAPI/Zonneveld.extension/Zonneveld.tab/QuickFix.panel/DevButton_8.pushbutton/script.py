@@ -16,8 +16,10 @@ Author: Emin Avdovic"""
 import clr
 
 clr.AddReference("RevitAPI")
+clr.AddReference("RevitAPIUI")
 clr.AddReference("RevitServices")
 clr.AddReference("RevitNodes")
+
 
 from Autodesk.Revit.DB import *
 from Autodesk.Revit.DB.Structure import StructuralFramingUtils  # Fixed import for beams
@@ -37,6 +39,14 @@ doc = revit.doc
 # ║║║╠═╣║║║║
 # ╩ ╩╩ ╩╩╝╚╝
 # ==================================================
+# Toggle debugging output
+DEBUG = False
+
+
+def debug_log(message):
+    """Helper function to log debug messages."""
+    if DEBUG:
+        print(message)
 
 
 # ✅ Define Supported Structural Categories (Physical & Analytical)
@@ -54,11 +64,11 @@ SUPPORTED_CATEGORIES = [
 ]
 
 
-# ✅ Function to Get Selected Structural Elements
 def get_elements():
+    """Get valid selected elements."""
     selection = uidoc.Selection.GetElementIds()
     if not selection:
-        print("No elements selected.")
+        debug_log("No elements selected.")
         return []
 
     selected_elements = [doc.GetElement(el_id) for el_id in selection]
@@ -68,69 +78,64 @@ def get_elements():
         if el.Category
         and el.Category.Id.IntegerValue in [int(cat) for cat in SUPPORTED_CATEGORIES]
     ]
-
     return elements
 
 
-# ✅ Function to Check if a Wall is Joined
 def is_wall_joined(wall):
+    """Check if a wall is joined."""
     return WallUtils.IsWallJoinAllowedAtEnd(
         wall, 0
     ) or WallUtils.IsWallJoinAllowedAtEnd(wall, 1)
 
 
-# ✅ Function to Check if a Beam is Joined
 def is_beam_joined(beam):
+    """Check if a beam is joined."""
     return StructuralFramingUtils.IsJoinAllowedAtEnd(
         beam, 0
     ) or StructuralFramingUtils.IsJoinAllowedAtEnd(beam, 1)
 
 
-# ✅ Function to Check if a Column is Joined
 def are_columns_joined(doc, col1, col2):
+    """Check if two columns are joined."""
     return JoinGeometryUtils.AreElementsJoined(doc, col1, col2)
 
 
-# ✅ Function to Toggle Wall Joins
 def toggle_wall_join(walls, allow):
+    """Toggle wall join."""
     count = 0
     for wall in walls:
         try:
             if allow:
                 WallUtils.AllowWallJoinAtEnd(wall, 0)
                 WallUtils.AllowWallJoinAtEnd(wall, 1)
-                print("Joined Wall ID:", wall.Id)
             else:
                 WallUtils.DisallowWallJoinAtEnd(wall, 0)
                 WallUtils.DisallowWallJoinAtEnd(wall, 1)
-                print("Unjoined Wall ID:", wall.Id)
             count += 1
         except Exception as ex:
-            print("Error processing wall join:", str(ex))
+            debug_log("Error processing wall join: " + str(ex))
     return count
 
 
-# ✅ Function to Toggle Beam Joins
 def toggle_beam_join(beams, allow):
+    """Toggle beam join."""
     count = 0
     for beam in beams:
         try:
             if allow:
                 StructuralFramingUtils.AllowJoinAtEnd(beam, 0)
                 StructuralFramingUtils.AllowJoinAtEnd(beam, 1)
-                print("Joined Beam ID:", beam.Id)
             else:
                 StructuralFramingUtils.DisallowJoinAtEnd(beam, 0)
                 StructuralFramingUtils.DisallowJoinAtEnd(beam, 1)
-                print("Unjoined Beam ID:", beam.Id)
             count += 1
         except Exception as ex:
-            print("Error processing beam join:", str(ex))
+            debug_log("Error processing beam join: " + str(ex))
     return count
 
 
-# ✅ Function to Toggle Column Joins
 def toggle_column_join(doc, columns, allow):
+    """Toggle column join."""
     count = 0
     for i in range(len(columns)):
         for j in range(i + 1, len(columns)):
@@ -140,19 +145,17 @@ def toggle_column_join(doc, columns, allow):
                 if allow:
                     if not are_columns_joined(doc, col1, col2):
                         JoinGeometryUtils.JoinGeometry(doc, col1, col2)
-                        print("Joined Columns:", col1.Id, col2.Id)
                 else:
                     if are_columns_joined(doc, col1, col2):
                         JoinGeometryUtils.UnjoinGeometry(doc, col1, col2)
-                        print("Unjoined Columns:", col1.Id, col2.Id)
                 count += 1
             except Exception as ex:
-                print("Error processing column join:", str(ex))
+                debug_log("Error processing column join: " + str(ex))
     return count
 
 
-# ✅ Function to Toggle Floor & Foundation Joins
 def toggle_floor_join(doc, floors, allow):
+    """Toggle floor join."""
     count = 0
     for i in range(len(floors)):
         for j in range(i + 1, len(floors)):
@@ -162,22 +165,20 @@ def toggle_floor_join(doc, floors, allow):
                 if allow:
                     if not JoinGeometryUtils.AreElementsJoined(doc, floor1, floor2):
                         JoinGeometryUtils.JoinGeometry(doc, floor1, floor2)
-                        print("Joined Floors:", floor1.Id, floor2.Id)
                 else:
                     if JoinGeometryUtils.AreElementsJoined(doc, floor1, floor2):
                         JoinGeometryUtils.UnjoinGeometry(doc, floor1, floor2)
-                        print("Unjoined Floors:", floor1.Id, floor2.Id)
                 count += 1
             except Exception as ex:
-                print("Error processing floor join:", str(ex))
+                debug_log("Error processing floor join: " + str(ex))
     return count
 
 
-# ✅ Main Execution
+# Main execution
 elements = get_elements()
 
 if elements:
-    # Separate Elements by Category
+    # Separate elements by category
     walls = [
         el
         for el in elements
@@ -217,15 +218,8 @@ if elements:
 
         t.Commit()
 
-        # Print Summary
-        print("Join/Unjoin Summary")
-        print("Walls Processed:", wall_count)
-        print("Beams Processed:", beam_count)
-        print("Columns Processed:", column_count)
-        print("Floors Processed:", floor_count)
-
     except Exception as e:
-        print("Transaction failed:", str(e))
+        debug_log("Transaction failed: " + str(e))
         t.RollBack()
 else:
-    print("No valid structural elements selected.")
+    debug_log("No valid structural elements selected.")
