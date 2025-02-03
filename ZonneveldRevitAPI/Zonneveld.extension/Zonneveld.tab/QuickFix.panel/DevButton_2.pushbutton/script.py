@@ -56,29 +56,32 @@ rvt_year = int(app.VersionNumber)
 # ╩ ╩╩ ╩╩╝╚╝
 # ==================================================
 
-# Accress SharedParameterFiles ( you need to have the shared parameter file path set)
+# Access SharedParameterFile
 sp_file = app.OpenSharedParameterFile()
 if not sp_file:
     forms.alert(
-        "Shared parameter File not found. Add the Shared Parameter File in Revit and try again."
+        "Shared parameter file not found. Add the shared parameter file in Revit and try again.",
+        exitscript=True,
     )
 
-# Sort All Parameters from SharedParameterFile
+# Collect all parameters from the shared parameter file
 dict_shared_params = {}
 for group in sp_file.Groups:
     for p_def in group.Definitions:
         combined_name = "[{}]_{}".format(group.Name, p_def.Name)
         dict_shared_params[combined_name] = p_def
 
-# 1. Use pyRevit Forms to choose SharedParameters
+# 1. Use pyRevit Forms to choose shared parameters
 selected_p_names = forms.SelectFromList.show(
     sorted(dict_shared_params.keys()), button_name="Select Parameters", multiselect=True
 )
-selected_param_defs = [dict_shared_params[p_name] for p_name in selected_p_names]
 
-# Print Selected Parametes
-# print(selected_p_names)
-# print(selected_param_defs)
+# Handle case where the user cancels the selection window
+if not selected_p_names:
+    forms.alert("No parameters selected. Exiting script.", exitscript=True)
+
+# Get selected parameter definitions
+selected_param_defs = [dict_shared_params[p_name] for p_name in selected_p_names]
 
 # 2. Select Categories and create CategorySet
 cat_set = app.Create.NewCategorySet()
@@ -89,30 +92,24 @@ cat_set.Insert(cat_wall)
 
 # 3. Create Instance or Type Binding
 new_instance_binding = app.Create.NewInstanceBinding(cat_set)
-# new_type_binding = app.Create.NewTypeBinding(cat_set)
 
 # 4. Select Parameter Group
-# parameter_group = (
-#     BuiltInParameterGroup.PG_ANALYSIS_RESULTS
-# )  # This works find until RVT 2024
-# parameter_group = GroupTypeId.AnalysisResults  # works on RVT 2024+
-if rvt_year >= 2024:
-    parameter_group = GroupTypeId.AnalysisResults  # works on RVT 2024+
-else:
-    parameter_group = (
-        BuiltInParameterGroup.PG_ANALYSIS_RESULTS
-    )  # works on lower than RVT 2024
+parameter_group = (
+    GroupTypeId.AnalysisResults
+    if rvt_year >= 2024
+    else BuiltInParameterGroup.PG_ANALYSIS_RESULTS
+)
 
 # 5. Add Parameters
 t = Transaction(doc, "Add Shared Parameters")
-t.Start()  # Start transaction
+t.Start()
 
-# Iterate through Parameter Groups and Parameter Definitions
+# Iterate through selected parameter definitions
 for p_def in selected_param_defs:
     try:
         doc.ParameterBindings.Insert(p_def, new_instance_binding, parameter_group)
-        print("✅Added Parameter: {}".format(p_def.Name))
-    except:
-        print("❌Failed to add {}".format(p_def.Name))
+        print("✅ Added Parameter: {}".format(p_def.Name))
+    except Exception as e:
+        print("❌ Failed to add {}: {}".format(p_def.Name, str(e)))
 
-t.Commit()  # Commit transaction
+t.Commit()
