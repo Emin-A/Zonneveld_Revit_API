@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__title__ = "Select \n Same"
+__title__ = "Select Same \n Type"
 __doc__ = """Version = 1.0
 Date    = 17.01.2025
 ________________________________________________________________
