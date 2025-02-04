@@ -9,8 +9,9 @@ from Autodesk.Revit.DB import (
     Transaction,
     BuiltInCategory,
 )
-from pyrevit import revit, forms
+from pyrevit import revit, DB, forms
 from System.Collections.Generic import List
+from collections import defaultdict
 
 # Access Revit document
 
@@ -45,44 +46,66 @@ def debug_log(message):
         print(message)
 
 
-def get_selected_category():
-    """Get the category of the selected element."""
-    selection = uidoc.Selection.GetElementIds()
-    if not selection:
-        forms.alert(
-            "Please select an element to continue.",
-            title="No Selection",
-            exitscript=True,
-        )
-    selected_element = doc.GetElement(selection[0])
-    return selected_element.Category if selected_element else None
+# Get active selection
+selection = revit.get_selection()
+if not selection:
+    forms.alert("At least one object must be selected.", exitscript=True)
 
+# Dictionary to store category elements
+category_elements = defaultdict(list)
 
-def select_by_category(category):
-    """Select all elements of the same category as the provided category."""
-    collector = (
-        FilteredElementCollector(doc)
-        .OfCategoryId(category.Id)
-        .WhereElementIsNotElementType()
-    )
-    elements_to_select = [el.Id for el in collector]
+# Process each selected element
+for selected_element in selection:
+    debug_log("Processing element ID: {0}".format(selected_element.Id))
 
-    if elements_to_select:
-        uidoc.Selection.SetElementIds(List[ElementId](elements_to_select))
-        uidoc.RefreshActiveView()
-        forms.alert(
-            "Selected {} elements of category: {}".format(
-                len(elements_to_select), category.Name
-            ),
-            title="Selection Complete",
-        )
+    # Get the category of the element
+    if selected_element.Category:
+        category_name = selected_element.Category.Name
     else:
         forms.alert(
-            "No elements found for the selected category.", title="No Elements Found"
+            "Selected element does not belong to a valid category.", exitscript=True
         )
 
+    debug_log("Selected category: {0}".format(category_name))
 
-# Main execution
-category = get_selected_category()
-if category:
-    select_by_category(category)
+    # Collect all elements of the same category
+    same_category_elements = (
+        FilteredElementCollector(doc)
+        .OfCategoryId(selected_element.Category.Id)
+        .WhereElementIsNotElementType()
+        .ToElements()
+    )
+
+    for element in same_category_elements:
+        category_elements[category_name].append(element.Id)
+
+# Highlight all selected elements
+all_selected_elements = [
+    el_id for elements in category_elements.values() for el_id in elements
+]
+if not all_selected_elements:
+    forms.alert("No matching elements found.", exitscript=True)
+
+revit.get_selection().set_to(all_selected_elements)
+
+# Prepare the summary message
+summary_message = "Selection Summary:\n"
+total_selected_count = 0
+for category_name, elements in category_elements.items():
+    element_count = len(elements)
+    total_selected_count += element_count
+    summary_message += "Category: {0}, Total Selected: {1}\n".format(
+        category_name, element_count
+    )
+
+summary_message += "\nTotal Elements Selected: {0}".format(total_selected_count)
+
+# Show the summary popup
+forms.alert(summary_message, title="Selection Summary")
+
+# Log results if debugging is enabled
+if DEBUG:
+    for category_name, elements in category_elements.items():
+        debug_log("Category: {0}".format(category_name))
+        for element_id in elements:
+            debug_log("Element ID: {0}".format(element_id))
