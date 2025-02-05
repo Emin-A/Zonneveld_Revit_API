@@ -2,8 +2,8 @@
 __title__ = "Purge \n Unused"
 __doc__ = """Unified purge tool combining Revit's built-in purge and custom wipes."""
 
-from pyrevit import revit, DB, forms, script
-from pyrevit import DB, UI
+from pyrevit import revit, DB, UI, forms, script
+from Autodesk.Revit.UI import RevitCommandId, PostableCommand
 from System.Collections.Generic import List
 from Autodesk.Revit.DB import *
 from Autodesk.Revit.DB import (
@@ -27,6 +27,7 @@ doc = __revit__.ActiveUIDocument.Document
 
 # Logger
 logger = script.get_logger()
+output = script.get_output()
 
 
 import clr
@@ -50,194 +51,157 @@ def debug_log(message):
         print(message)
 
 
-# Function to execute Revit's built-in Purge Unused command
+def handle_deletion(element_id, category_name):
+    """Safely delete an element with error handling."""
+    try:
+        doc.Delete(element_id)
+        logger.info("Deleted {} ID: {}".format(category_name, element_id))
+    except Exception as err:
+        logger.error("Failed to delete {}: {}".format(category_name, err))
+
+
+# Functions for various purge operations
+def purge_constraints():
+    """Purge all constraints, skipping protected ones."""
+    constraints = (
+        DB.FilteredElementCollector(doc)
+        .OfCategory(DB.BuiltInCategory.OST_Constraints)
+        .WhereElementIsNotElementType()
+        .ToElements()
+    )
+    for constraint in constraints:
+        if isinstance(constraint, DB.Dimension):
+            logger.warning("Skipped constraint (Dimension): {}".format(constraint.Id))
+            continue
+        handle_deletion(constraint.Id, "Constraint")
+
+
+def purge_elevation_markers():
+    """Purge all empty elevation markers."""
+    markers = (
+        DB.FilteredElementCollector(doc)
+        .OfClass(DB.ElevationMarker)
+        .WhereElementIsNotElementType()
+        .ToElements()
+    )
+    for marker in markers:
+        if marker.CurrentViewCount > 0:
+            logger.warning(
+                "Skipped elevation marker with active views: {}".format(marker.Id)
+            )
+            continue
+        handle_deletion(marker.Id, "Elevation Marker")
+
+
+def purge_viewport_types():
+    """Purge unused viewport types, skipping protected ones."""
+    element_types = (
+        DB.FilteredElementCollector(doc)
+        .OfClass(DB.ElementType)
+        .WhereElementIsElementType()
+        .ToElements()
+    )
+    viewport_types = [t for t in element_types if t.FamilyName == "Viewport"]
+
+    for viewport in viewport_types:
+        try:
+            doc.Delete(viewport.Id)
+            logger.info("Deleted Viewport Type ID: {}".format(viewport.Id))
+        except Exception as err:
+            logger.error("Failed to delete viewport type: {}".format(err))
+
+
 def purge_unused_families_and_types():
-    """Executes Revit's built-in Purge Unused command."""
+    """Trigger Revit's built-in 'Purge Unused' command."""
     try:
-        purge_command_id = UI.RevitCommandId.LookupPostableCommandId(
-            UI.PostableCommand.PurgeUnused
+        from Autodesk.Revit.UI import PostableCommand, RevitCommandId
+
+        purge_command = RevitCommandId.LookupPostableCommandId(
+            PostableCommand.PurgeUnused
         )
-        revit.app.PostCommand(purge_command_id)
-        print("✅ Revit's built-in Purge Unused executed.")
-    except Exception as e:
-        logger.error("Failed to execute built-in purge: {}".format(str(e)))
+        __revit__.PostCommand(
+            purge_command
+        )  # Correctly using the built-in __revit__ object
+        logger.info("Triggered built-in 'Purge Unused' successfully.")
+    except Exception as err:
+        logger.error("Failed to execute built-in purge: {}".format(err))
 
 
-# Function to remove constraints
-def purge_all_constraints():
-    """Remove all constraints."""
-    try:
-        constraints = (
-            FilteredElementCollector(doc)
-            .OfCategory(BuiltInCategory.OST_Constraints)
-            .ToElements()
-        )
-        with revit.Transaction("Purge All Constraints"):
-            for constraint in constraints:
-                try:
-                    if constraint.IsValidObject:
-                        doc.Delete(constraint.Id)
-                        debug_log("Deleted Constraint ID: {}".format(constraint.Id))
-                except Exception as e:
-                    logger.error("Failed to delete constraint: {}".format(e))
-    except Exception as e:
-        logger.error("Error during constraints purge: {}".format(str(e)))
-
-
-# Function to remove empty elevation markers
-def purge_empty_elevation_markers():
-    """Remove all empty elevation markers."""
-    try:
-        elevation_markers = (
-            FilteredElementCollector(doc).OfClass(ElevationMarker).ToElements()
-        )
-        with revit.Transaction("Purge Empty Elevation Markers"):
-            for marker in elevation_markers:
-                try:
-                    if marker.CurrentViewCount == 0 and marker.IsValidObject:
-                        doc.Delete(marker.Id)
-                        debug_log("Deleted Elevation Marker ID: {}".format(marker.Id))
-                except Exception as e:
-                    logger.error("Failed to delete elevation marker: {}".format(e))
-    except Exception as e:
-        logger.error("Error during elevation marker purge: {}".format(str(e)))
-
-
-# Function to remove unused filters
 def purge_unused_filters():
-    """Remove all unused filters."""
-    try:
-        views = (
-            FilteredElementCollector(doc)
-            .OfClass(View)
-            .WhereElementIsNotElementType()
-            .ToElements()
-        )
-        filters = (
-            FilteredElementCollector(doc).OfClass(ParameterFilterElement).ToElements()
-        )
-
-        used_filters = set()
-        all_filters = set(filter_elem.Id.IntegerValue for filter_elem in filters)
-
-        for view in views:
-            if view.AreGraphicsOverridesAllowed():
-                for filter_id in view.GetFilters():
-                    used_filters.add(filter_id.IntegerValue)
-
-        unused_filters = all_filters - used_filters
-
-        if unused_filters:
-            with revit.Transaction("Purge Unused Filters"):
-                for filter_id in unused_filters:
-                    try:
-                        doc.Delete(ElementId(filter_id))
-                        debug_log("Deleted Unused Filter ID: {}".format(filter_id))
-                    except Exception as e:
-                        logger.error("Failed to delete filter: {}".format(e))
-        else:
-            print("All filters are in use.")
-    except Exception as e:
-        logger.error("Error during filter purge: {}".format(str(e)))
-
-
-# Function to remove unused view templates
-def purge_unused_view_templates():
-    """Remove all unused view templates."""
-    try:
-        views = (
-            FilteredElementCollector(doc)
-            .OfClass(View)
-            .WhereElementIsNotElementType()
-            .ToElements()
-        )
-
-        template_ids = set(view.Id.IntegerValue for view in views if view.IsTemplate)
-        used_template_ids = set(
-            view.ViewTemplateId.IntegerValue
-            for view in views
-            if not view.IsTemplate and view.ViewTemplateId.IntegerValue != -1
-        )
-
-        unused_template_ids = template_ids - used_template_ids
-
-        if unused_template_ids:
-            with revit.Transaction("Purge Unused View Templates"):
-                for template_id in unused_template_ids:
-                    try:
-                        doc.Delete(ElementId(template_id))
-                        debug_log(
-                            "Deleted Unused View Template ID: {}".format(template_id)
-                        )
-                    except Exception as e:
-                        logger.error("Failed to delete view template: {}".format(e))
-        else:
-            print("All view templates are in use.")
-    except Exception as e:
-        logger.error("Error during view template purge: {}".format(str(e)))
-
-
-# Function to purge unused viewport types
-def purge_unused_viewport_types():
-    """Remove all unused viewport types."""
-    try:
-        viewport_types = [
-            vt
-            for vt in FilteredElementCollector(doc).OfClass(ElementType)
-            if vt.FamilyName == "Viewport"
-        ]
-
-        with revit.Transaction("Purge Unused Viewport Types"):
-            for viewport_type in viewport_types:
-                try:
-                    if viewport_type.IsValidObject:
-                        doc.Delete(viewport_type.Id)
-                        debug_log(
-                            "Deleted Viewport Type ID: {}".format(viewport_type.Id)
-                        )
-                except Exception as e:
-                    logger.error("Failed to delete viewport type: {}".format(e))
-    except Exception as e:
-        logger.error("Error during viewport type purge: {}".format(str(e)))
-
-
-# Function to remove unused subcategories
-def purge_unused_subcategories():
-    """Remove all unused subcategories."""
-    try:
-        subcategories = revit.query.get_subcategories(doc=doc, purgable=True)
-
-        with revit.Transaction("Purge Unused SubCategories"):
-            for subcat in subcategories:
-                try:
-                    doc.Delete(subcat.Id)
-                    debug_log("Deleted SubCategory ID: {}".format(subcat.Id))
-                except Exception as e:
-                    logger.error("Failed to delete subcategory: {}".format(e))
-    except Exception as e:
-        logger.error("Error during subcategory purge: {}".format(str(e)))
-
-
-# Main execution
-if __name__ == "__main__":
-    purge_options = {
-        "All Constraints": purge_all_constraints,
-        "Empty Elevation Markers": purge_empty_elevation_markers,
-        "Unused Families & Types": purge_unused_families_and_types,
-        "Unused Filters": purge_unused_filters,
-        "Unused View Templates": purge_unused_view_templates,
-        "Unused Viewport Types": purge_unused_viewport_types,
-        "Unused SubCategories": purge_unused_subcategories,
-    }
-
-    selected_option = forms.SelectFromList.show(
-        sorted(purge_options.keys()),
-        title="Select Purge Options",
-        multiselect=True,
+    """Purge unused view filters."""
+    views = (
+        DB.FilteredElementCollector(doc)
+        .OfClass(DB.View)
+        .WhereElementIsNotElementType()
+        .ToElements()
+    )
+    filters = (
+        DB.FilteredElementCollector(doc).OfClass(DB.ParameterFilterElement).ToElements()
     )
 
-    if selected_option:
-        for option in selected_option:
-            purge_action = purge_options.get(option)
-            if purge_action:
-                purge_action()
+    all_filters = {flt.Id for flt in filters}
+    used_filters = set()
+
+    for view in views:
+        if view.AreGraphicsOverridesAllowed():
+            for filter_id in view.GetFilters():
+                used_filters.add(filter_id)
+
+    unused_filters = all_filters - used_filters
+
+    for filter_id in unused_filters:
+        handle_deletion(filter_id, "Unused Filter")
+
+
+def purge_unused_view_templates():
+    """Purge unused view templates."""
+    views = (
+        DB.FilteredElementCollector(doc)
+        .OfClass(DB.View)
+        .WhereElementIsNotElementType()
+        .ToElements()
+    )
+    unused_templates = set()
+
+    for view in views:
+        if view.IsTemplate and not view.ViewTemplateId:
+            unused_templates.add(view.Id)
+
+    for template_id in unused_templates:
+        handle_deletion(template_id, "Unused View Template")
+
+
+# Ask the user to select purge operations
+purge_options = forms.SelectFromList.show(
+    [
+        "Unused View Templates",
+        "All Constraints",
+        "Empty Elevation Markers",
+        "Unused Viewport Types",
+        "Unused Families & Types",
+        "Unused Filters",
+    ],
+    title="Select Purge Options",
+    multiselect=True,
+)
+
+# Perform selected purge operations
+if purge_options:
+    with revit.Transaction("Purge Selected Elements"):
+        for option in purge_options:
+            if option == "Unused View Templates":
+                purge_unused_view_templates()
+            elif option == "All Constraints":
+                purge_constraints()
+            elif option == "Empty Elevation Markers":
+                purge_elevation_markers()
+            elif option == "Unused Viewport Types":
+                purge_viewport_types()
+            elif option == "Unused Families & Types":
+                purge_unused_families_and_types()
+            elif option == "Unused Filters":
+                purge_unused_filters()
+
+    forms.alert("Selected purge operations completed successfully.")
+else:
+    forms.alert("No purge options selected.")
