@@ -1,69 +1,79 @@
 # -*- coding: utf-8 -*-
-__title__ = "Run AI Analysis"
-__doc__ = """Unified script to export, analyze, and import AI-detected features from point clouds."""
+__title__ = "Run AI Analysis (Debug v4)"
+__doc__ = """Script to collect point cloud metadata using supported methods."""
 
 import json
-import subprocess
 import os
 from pyrevit import revit, DB, forms, script
+
+# Set up logger
+logger = script.get_logger()
 
 # Step 1: Export Point Cloud Data
 doc = revit.doc
 point_clouds = (
     DB.FilteredElementCollector(doc).OfClass(DB.PointCloudInstance).ToElements()
 )
+
 if not point_clouds:
     forms.alert("No point cloud found in the project.", exitscript=True)
 
+# Create output directory if not exists
+output_dir = "C:\\Zonneveld\\temp"
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
+
 exported_data = []
+
+# Collect metadata for each point cloud
 for cloud in point_clouds:
-    # Correcting the access to the point cloud's origin point
-    cloud_location = cloud.Location
-    if isinstance(cloud_location, DB.LocationPoint):
-        cloud_origin = cloud_location.Point
-        cloud_data = {
-            "name": cloud.Name,
-            "origin": [cloud_origin.X, cloud_origin.Y, cloud_origin.Z],
-        }
-        exported_data.append(cloud_data)
-    else:
+    logger.info("Inspecting point cloud: {}".format(cloud.Name))
+    cloud_data = {
+        "name": cloud.Name,
+        "regions": [],
+        "scans": [],
+        "color_supported": cloud.HasColor(),  # Call HasColor() correctly to get a boolean
+    }
+
+    # Fetch regions if available
+    try:
+        regions = cloud.GetRegions()
+        if regions:
+            cloud_data["regions"] = list(regions)
+    except Exception as e:
         logger.warning(
-            "Skipping point cloud with missing location data: {}".format(cloud.Id)
+            "Could not retrieve regions for cloud {}: {}".format(cloud.Name, e)
         )
 
-export_file = "C:\\temp\\point_cloud_data.json"
+    # Fetch scans if available
+    try:
+        scans = cloud.GetScans()
+        if scans:
+            cloud_data["scans"] = list(scans)
+    except Exception as e:
+        logger.warning(
+            "Could not retrieve scans for cloud {}: {}".format(cloud.Name, e)
+        )
+
+    # Export pathname parameter (if found)
+    try:
+        pathname_param = cloud.LookupParameter("PathName")
+        if pathname_param and pathname_param.HasValue:
+            cloud_data["path"] = pathname_param.AsString()
+    except Exception as e:
+        logger.warning(
+            "Could not retrieve pathname for cloud {}: {}".format(cloud.Name, e)
+        )
+
+    exported_data.append(cloud_data)
+
+# Write data to JSON
+export_file = os.path.join(output_dir, "point_cloud_data_debug_v4.json")
 with open(export_file, "w") as file:
     json.dump(exported_data, file, indent=4)
 
-forms.alert("Point cloud data exported successfully.")
-
-# Step 2: Run External Open3D Processing Script
-external_script_path = "C:\\path_to_scripts\\analyze_point_cloud.py"
-if not os.path.exists(external_script_path):
-    forms.alert(
-        "External script not found. Ensure the file path is correct.", exitscript=True
-    )
-
-subprocess.run(["python", external_script_path], check=True)
-
-# Step 3: Import Detected Features Back into Revit
-input_file = "C:\\temp\\detected_features.json"
-if not os.path.exists(input_file):
-    forms.alert(
-        "No detected features found. Ensure the external script ran successfully."
-    )
-    exit()
-
-with open(input_file, "r") as file:
-    detected_data = json.load(file)
-
-# Step 4: Process and create elements in Revit
-for feature in detected_data["detected_features"]:
-    if feature["type"] == "Plane":
-        plane_equation = feature["equation"]
-        num_points = feature["num_points"]
-        equation_text = "{:.2f}x + {:.2f}y + {:.2f}z + {:.2f} = 0".format(
-            *plane_equation
-        )
-        message = "Detected Plane: {} with {} points".format(equation_text, num_points)
-        forms.alert(message)
+# Check export results
+if not exported_data:
+    forms.alert("No valid point cloud data found. Export failed.", exitscript=True)
+else:
+    forms.alert("Point cloud metadata exported successfully. Check the debug JSON.")
