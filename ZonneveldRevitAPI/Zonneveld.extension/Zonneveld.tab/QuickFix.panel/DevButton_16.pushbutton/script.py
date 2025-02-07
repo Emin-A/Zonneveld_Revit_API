@@ -1,86 +1,96 @@
-# -*- coding: utf-8 -*-
-__title__ = "Create \n Print Set"
-__doc__ = """Create a print set from selected views in the Revit model."""
+__title__ = "Adjust \nSheet Numbers"
+__doc__ = """Shift the sheet numbers of selected sheets by a specified value."""
 
-from Autodesk.Revit.DB import (
-    Transaction,
-    FilteredElementCollector,
-    PrintRange,
-    View,
-    ViewSet,
-    ViewSheetSet,
-)
-from pyrevit import revit, forms, script
+from pyrevit import revit, DB, forms, script
 
 # Access Revit document
 doc = revit.doc
-uidoc = revit.uidoc
+# Logger setup
 logger = script.get_logger()
 
-# Step 1: Collect all views in the document
-all_views = (
-    FilteredElementCollector(doc)
-    .OfClass(View)
+
+# Helper function to increment/decrement sheet numbers
+def adjust_sheet_number(sheet_number, shift_value):
+    """Adjusts the numeric portion of the sheet number."""
+    # Split into prefix and numeric part
+    prefix = "".join([c for c in sheet_number if not c.isdigit()])
+    numeric_part = "".join([c for c in sheet_number if c.isdigit()])
+
+    if numeric_part:
+        new_numeric_part = str(int(numeric_part) + shift_value).zfill(len(numeric_part))
+        return prefix + new_numeric_part
+    else:
+        # If no numeric part is found, just return the original sheet number
+        return sheet_number
+
+
+# Step 1: Collect all sheets
+all_sheets = (
+    DB.FilteredElementCollector(revit.doc)
+    .OfClass(DB.ViewSheet)
     .WhereElementIsNotElementType()
     .ToElements()
 )
 
-# Filter out template views
-available_views = [view for view in all_views if not view.IsTemplate]
+if not all_sheets:
+    forms.alert("No sheets found in the project.", exitscript=True)
 
-# Step 2: Open a selection window for views
-selected_views = forms.SelectFromList.show(
-    sorted(available_views, key=lambda v: v.ViewType.ToString() + ": " + v.Name),
-    title="Select Views for Print Set",
+# Step 2: Show selection window
+selected_sheets = forms.SelectFromList.show(
+    [sheet.SheetNumber + " - " + sheet.Name for sheet in all_sheets],
     multiselect=True,
-    name_attr="Name",
+    title="Select Sheets to Adjust",
+    button_name="Select Sheets",
 )
 
-# Exit if no views are selected
-if not selected_views:
-    forms.alert("No views selected. Print set creation cancelled.", exitscript=True)
+if not selected_sheets:
+    forms.alert("No sheets were selected. Exiting script.", exitscript=True)
 
-# Step 3: Ask the user for a print set name
-print_set_name = forms.ask_for_string(
-    prompt="Enter a name for the print set (default is 'ViewPrintSet').",
-    title="Print Set Name",
-    default="ViewPrintSet",
+# Step 3: Prompt for shift value
+shift_value_str = forms.ask_for_string(
+    prompt="Enter the shift value (e.g., 1 to increment or -1 to decrement):",
+    title="Adjust Sheet Numbers",
 )
 
-if not print_set_name:
-    forms.alert("Print set creation cancelled. No name provided.", exitscript=True)
+if not shift_value_str or not shift_value_str.strip().lstrip("-").isdigit():
+    forms.alert("Invalid shift value provided. Exiting script.", exitscript=True)
 
-# Step 4: Prepare the print manager and view sheet setting
-print_manager = doc.PrintManager
-print_manager.PrintRange = PrintRange.Select
-view_sheet_setting = print_manager.ViewSheetSetting
+shift_value = int(shift_value_str.strip())
 
-# Convert selected views to a ViewSet
-view_set = ViewSet()
-for view in selected_views:
-    view_set.Insert(view)
+# Step 4: Map selected sheet names back to sheet elements
+selected_sheet_elements = [
+    sheet
+    for sheet in all_sheets
+    if sheet.SheetNumber + " - " + sheet.Name in selected_sheets
+]
 
-# Step 5: Check for existing print sets and create the new one
-existing_print_sets = {
-    vss.Name: vss
-    for vss in FilteredElementCollector(doc)
-    .OfClass(ViewSheetSet)
-    .WhereElementIsNotElementType()
-    .ToElements()
-}
+# Step 5: Sort sheets by current sheet number
+sorted_sheets = sorted(selected_sheet_elements, key=lambda x: x.SheetNumber)
 
-with Transaction(doc, "Create Print Set") as transaction:
-    transaction.Start()
+# Reverse sorting if decrementing to avoid conflicts
+if shift_value > 0:
+    sorted_sheets.reverse()
 
-    # Delete existing print set with the same name
-    if print_set_name in existing_print_sets:
-        view_sheet_setting.CurrentViewSheetSet = existing_print_sets[print_set_name]
-        view_sheet_setting.Delete()
-        logger.info("Deleted existing print set: " + print_set_name)
+# Step 6: Apply the shift and update sheet numbers
+with revit.Transaction("Adjust Sheet Numbers"):
+    for sheet in sorted_sheets:
+        try:
+            current_number = sheet.SheetNumber
+            new_number = adjust_sheet_number(current_number, shift_value)
 
-    # Create and save the new print set
-    view_sheet_setting.CurrentViewSheetSet.Views = view_set
-    view_sheet_setting.SaveAs(print_set_name)
-    transaction.Commit()
+            # Set new sheet number
+            sheet_num_param = sheet.LookupParameter("Sheet Number")
+            sheet_num_param.Set(new_number)
 
-forms.alert("Print set '" + print_set_name + "' created successfully.")
+            logger.info(
+                "Updated sheet number: {} -> {}".format(current_number, new_number)
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to update sheet number for {}: {}".format(sheet.SheetNumber, e)
+            )
+
+    revit.doc.Regenerate()
+
+# Final message
+forms.alert("Sheet numbers adjusted successfully.")

@@ -1,79 +1,86 @@
 # -*- coding: utf-8 -*-
-__title__ = "AI \n Analysis"
-__doc__ = """Script to collect point cloud metadata using supported methods."""
+__title__ = "Create \n Print Set"
+__doc__ = """Create a print set from selected views in the Revit model."""
 
-import json
-import os
-from pyrevit import revit, DB, forms, script
+from Autodesk.Revit.DB import (
+    Transaction,
+    FilteredElementCollector,
+    PrintRange,
+    View,
+    ViewSet,
+    ViewSheetSet,
+)
+from pyrevit import revit, forms, script
 
-# Set up logger
+# Access Revit document
+doc = revit.doc
+uidoc = revit.uidoc
 logger = script.get_logger()
 
-# Step 1: Export Point Cloud Data
-doc = revit.doc
-point_clouds = (
-    DB.FilteredElementCollector(doc).OfClass(DB.PointCloudInstance).ToElements()
+# Step 1: Collect all views in the document
+all_views = (
+    FilteredElementCollector(doc)
+    .OfClass(View)
+    .WhereElementIsNotElementType()
+    .ToElements()
 )
 
-if not point_clouds:
-    forms.alert("No point cloud found in the project.", exitscript=True)
+# Filter out template views
+available_views = [view for view in all_views if not view.IsTemplate]
 
-# Create output directory if not exists
-output_dir = "C:\\Zonneveld\\temp"
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
+# Step 2: Open a selection window for views
+selected_views = forms.SelectFromList.show(
+    sorted(available_views, key=lambda v: v.ViewType.ToString() + ": " + v.Name),
+    title="Select Views for Print Set",
+    multiselect=True,
+    name_attr="Name",
+)
 
-exported_data = []
+# Exit if no views are selected
+if not selected_views:
+    forms.alert("No views selected. Print set creation cancelled.", exitscript=True)
 
-# Collect metadata for each point cloud
-for cloud in point_clouds:
-    logger.info("Inspecting point cloud: {}".format(cloud.Name))
-    cloud_data = {
-        "name": cloud.Name,
-        "regions": [],
-        "scans": [],
-        "color_supported": cloud.HasColor(),  # Call HasColor() correctly to get a boolean
-    }
+# Step 3: Ask the user for a print set name
+print_set_name = forms.ask_for_string(
+    prompt="Enter a name for the print set (default is 'ViewPrintSet').",
+    title="Print Set Name",
+    default="ViewPrintSet",
+)
 
-    # Fetch regions if available
-    try:
-        regions = cloud.GetRegions()
-        if regions:
-            cloud_data["regions"] = list(regions)
-    except Exception as e:
-        logger.warning(
-            "Could not retrieve regions for cloud {}: {}".format(cloud.Name, e)
-        )
+if not print_set_name:
+    forms.alert("Print set creation cancelled. No name provided.", exitscript=True)
 
-    # Fetch scans if available
-    try:
-        scans = cloud.GetScans()
-        if scans:
-            cloud_data["scans"] = list(scans)
-    except Exception as e:
-        logger.warning(
-            "Could not retrieve scans for cloud {}: {}".format(cloud.Name, e)
-        )
+# Step 4: Prepare the print manager and view sheet setting
+print_manager = doc.PrintManager
+print_manager.PrintRange = PrintRange.Select
+view_sheet_setting = print_manager.ViewSheetSetting
 
-    # Export pathname parameter (if found)
-    try:
-        pathname_param = cloud.LookupParameter("PathName")
-        if pathname_param and pathname_param.HasValue:
-            cloud_data["path"] = pathname_param.AsString()
-    except Exception as e:
-        logger.warning(
-            "Could not retrieve pathname for cloud {}: {}".format(cloud.Name, e)
-        )
+# Convert selected views to a ViewSet
+view_set = ViewSet()
+for view in selected_views:
+    view_set.Insert(view)
 
-    exported_data.append(cloud_data)
+# Step 5: Check for existing print sets and create the new one
+existing_print_sets = {
+    vss.Name: vss
+    for vss in FilteredElementCollector(doc)
+    .OfClass(ViewSheetSet)
+    .WhereElementIsNotElementType()
+    .ToElements()
+}
 
-# Write data to JSON
-export_file = os.path.join(output_dir, "point_cloud_data_debug_v4.json")
-with open(export_file, "w") as file:
-    json.dump(exported_data, file, indent=4)
+with Transaction(doc, "Create Print Set") as transaction:
+    transaction.Start()
 
-# Check export results
-if not exported_data:
-    forms.alert("No valid point cloud data found. Export failed.", exitscript=True)
-else:
-    forms.alert("Point cloud metadata exported successfully. Check the debug JSON.")
+    # Delete existing print set with the same name
+    if print_set_name in existing_print_sets:
+        view_sheet_setting.CurrentViewSheetSet = existing_print_sets[print_set_name]
+        view_sheet_setting.Delete()
+        logger.info("Deleted existing print set: " + print_set_name)
+
+    # Create and save the new print set
+    view_sheet_setting.CurrentViewSheetSet.Views = view_set
+    view_sheet_setting.SaveAs(print_set_name)
+    transaction.Commit()
+
+forms.alert("Print set '" + print_set_name + "' created successfully.")
