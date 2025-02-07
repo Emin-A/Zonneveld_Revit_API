@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__title__ = "Run AI Analysis (Debug v4)"
+__title__ = "AI \n Analysis"
 __doc__ = """Script to collect point cloud metadata using supported methods."""
 
 import json
