@@ -1,91 +1,102 @@
-import sys
 import json
 import open3d as o3d
+import numpy as np
+from sklearn.cluster import DBSCAN
 import os
 
 # Load point cloud metadata
 metadata_file = "C:\\Zonneveld\\temp\\point_cloud_data_with_transform.json"
 output_file = "C:\\Zonneveld\\temp\\detected_features.json"
-point_cloud_dir = "C:\\Zonneveld\\Point_Clouds"
 
-# Check if metadata file exists
 if not os.path.exists(metadata_file):
     print("Metadata file not found. Exiting.")
-    sys.exit()
+    exit()
 
-# Read point cloud metadata
+# Read metadata
 with open(metadata_file, "r") as file:
     metadata = json.load(file)
 
-# Initialize detected features list
 detected_features = {"detected_features": []}
 
 # Process each scan from the metadata
-for point_cloud_entry in metadata:
-    scans = point_cloud_entry.get("scans", [])
-    transform_data = point_cloud_entry.get("transform", {})
+for entry in metadata:
+    scans = entry.get("scans", [])
     if not scans:
         print("No scans found for entry. Skipping.")
         continue
 
     scan_file_name = scans[0] + ".pts"
-    scan_file_path = os.path.join(point_cloud_dir, scan_file_name)
+    scan_file_path = os.path.join("C:\\Zonneveld\\Point_Clouds", scan_file_name)
 
     if not os.path.exists(scan_file_path):
-        print("Scan file not found: " + scan_file_path)
+        print("Scan file not found:", scan_file_path)
         continue
 
-    # Load point cloud from .pts
-    point_cloud = o3d.io.read_point_cloud(scan_file_path, format="pts")
+    # Read points from the .pts file
+    points = []
+    colors = []
+    try:
+        with open(scan_file_path, "r") as file:
+            line_count = int(
+                file.readline().strip()
+            )  # First line is the number of points
+            for line in file:
+                data = line.split()
+                if len(data) >= 6:
+                    x, y, z = float(data[0]), float(data[1]), float(data[2])
+                    r, g, b = int(data[3]), int(data[4]), int(data[5])
+                    points.append([x, y, z])
+                    colors.append([r / 255.0, g / 255.0, b / 255.0])
 
-    if point_cloud.is_empty():
-        print("Empty point cloud loaded. Skipping.")
+    except Exception as e:
+        print("Error reading .pts file:", e)
         continue
 
-    # Apply transformation if present
-    if transform_data:
-        origin = transform_data.get("origin", [0.0, 0.0, 0.0])
-        basis_x = transform_data.get("basis_x", [1.0, 0.0, 0.0])
-        basis_y = transform_data.get("basis_y", [0.0, 1.0, 0.0])
-        basis_z = transform_data.get("basis_z", [0.0, 0.0, 1.0])
+    print("Read {} points from {}".format(len(points), scan_file_path))
 
-        transform_matrix = [
-            [basis_x[0], basis_y[0], basis_z[0], origin[0]],
-            [basis_x[1], basis_y[1], basis_z[1], origin[1]],
-            [basis_x[2], basis_y[2], basis_z[2], origin[2]],
-            [0, 0, 0, 1],
-        ]
+    # Convert points to Open3D point cloud
+    point_cloud = o3d.geometry.PointCloud()
+    point_cloud.points = o3d.utility.Vector3dVector(points)
+    point_cloud.colors = o3d.utility.Vector3dVector(colors)
 
-        point_cloud.transform(transform_matrix)
+    # **Downsample the point cloud**
+    voxel_size = 0.1  # Adjust this value as needed
+    point_cloud = point_cloud.voxel_down_sample(voxel_size)
 
-    # Detect planes using RANSAC
-    plane_model, inliers = point_cloud.segment_plane(
-        distance_threshold=0.01, ransac_n=3, num_iterations=1000
+    downsampled_points = np.asarray(point_cloud.points)
+    print("Downsampled to {} points.".format(len(downsampled_points)))
+
+    if len(downsampled_points) == 0:
+        print("Downsampling resulted in an empty point cloud. Skipping.")
+        continue
+
+    # Run DBSCAN clustering on downsampled points
+    dbscan_labels = np.array(
+        DBSCAN(eps=0.5, min_samples=10).fit(downsampled_points).labels_
     )
 
-    if plane_model:
-        plane_equation = {
-            "type": "Plane",
-            "equation": [
-                plane_model[0],
-                plane_model[1],
-                plane_model[2],
-                plane_model[3],
-            ],
-            "num_points": len(inliers),
-        }
-        detected_features["detected_features"].append(plane_equation)
-        print(
-            "Detected plane with equation: {}x + {}y + {}z + {} = 0".format(
-                *plane_model
-            )
+    # Extract clusters and bounding boxes
+    unique_labels = set(dbscan_labels)
+    for label in unique_labels:
+        if label == -1:  # Noise points
+            continue
+
+        cluster_points = downsampled_points[dbscan_labels == label]
+        bbox_min = cluster_points.min(axis=0)
+        bbox_max = cluster_points.max(axis=0)
+
+        # Save detected feature
+        detected_features["detected_features"].append(
+            {
+                "type": "Cluster",
+                "cluster_id": int(label),
+                "bounding_box": {"min": bbox_min.tolist(), "max": bbox_max.tolist()},
+                "num_points": len(cluster_points),
+            }
         )
 
 # Save detected features to output JSON
 with open(output_file, "w") as file:
     json.dump(detected_features, file, indent=4)
 
-print("Feature detection completed and saved to " + output_file)
-print("Python executable:", sys.executable)
-print("Python sys.path:", sys.path)
-print("Open3D version:", o3d.__version__)
+print("Feature detection completed and saved to", output_file)
