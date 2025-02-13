@@ -94,10 +94,10 @@ for point_cloud_entry in metadata:
         # **Try DBSCAN Clustering**
         try:
             with open(log_file_path, "a") as log_file:
-                log_file.write("Running DBSCAN with eps=1.0 and min_samples=100...\n")
+                log_file.write("Running DBSCAN with eps=0.022 and min_samples=13...\n")
 
             dbscan_labels = np.array(
-                DBSCAN(eps=1.0, min_samples=100).fit(points).labels_
+                DBSCAN(eps=0.022, min_samples=13).fit(points).labels_
             )
             unique_labels = set(dbscan_labels)
             num_clusters = len(unique_labels) - (1 if -1 in unique_labels else 0)
@@ -170,3 +170,9 @@ except Exception as e:
         log_file.write("Failed to save detected features: " + str(e) + "\n")
 
 print("AI Analysis Completed.")
+if "dbscan_labels" in locals():
+    print("DBSCAN unique clusters:", np.unique(dbscan_labels))
+else:
+    print("❌ DBSCAN failed: No clusters detected.")
+
+print("DBSCAN unique clusters:", np.unique(dbscan_labels))

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__title__ = "AI \n Analysis"
+__title__ = "AI \n Massing"
 __doc__ = """Pipeline to export, analyze, and import AI-detected features from point clouds."""
 
 import json
