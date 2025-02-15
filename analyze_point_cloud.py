@@ -3,176 +3,132 @@ import json
 import numpy as np
 import open3d as o3d
 import os
-from sklearn.cluster import DBSCAN, KMeans
+from sklearn.linear_model import RANSACRegressor
+
+# from sklearn.cluster import DBSCAN, KMeans
+# from scipy.spatial import ConvexHull
 
 # Define file paths
-metadata_file = "C:\\Zonneveld\\temp\\point_cloud_data_with_transform.json"
-output_file = "C:\\Zonneveld\\temp\\detected_features.json"
-log_file_path = "C:\\Zonneveld\\temp\\ai_debug_log.txt"  # ✅ Fix: Declare the log file path at the start
+temp_dir = "C:\\Zonneveld\\temp"
+point_cloud_path = "C:\\Zonneveld\\Point_Clouds\\Aerial scan farmhouse.pts"
+detected_surfaces_path = os.path.join(temp_dir, "detected_surfaces.json")
+log_file_path = os.path.join(temp_dir, "ai_debug_log.txt")
 
-# Initialize log file
-try:
-    with open(log_file_path, "w") as log_file:
-        log_file.write("AI Analysis Debug Log\n")
-        log_file.write("-----------------\n")
-except Exception as e:
-    print("Failed to create log file: " + str(e))
-    exit()
 
-# Ensure metadata file exists
-if not os.path.exists(metadata_file):
+# Logging function
+def write_log(message):
     with open(log_file_path, "a") as log_file:
-        log_file.write("Metadata file not found. Exiting.\n")
-    print("Metadata file not found. Exiting.")
+        log_file.write(message + "\n")
+    print(message)
+
+
+# Load Point Cloud Data
+write_log("Processing Point Cloud: " + point_cloud_path)
+
+if not os.path.exists(point_cloud_path):
+    write_log("Error: PTS file not found.")
     exit()
 
-# Load metadata
-try:
-    with open(metadata_file, "r") as file:
-        metadata = json.load(file)
-except Exception as e:
-    with open(log_file_path, "a") as log_file:
-        log_file.write("Failed to load metadata file: " + str(e) + "\n")
-    exit()
+# Read PTS file
+with open(point_cloud_path, "r") as file:
+    lines = file.readlines()
 
-# Initialize detected features list
-detected_features = {"detected_features": []}
+num_points = int(lines[0].strip())  # First line contains number of points
+write_log("Found " + str(num_points) + " lines in the PTS file.")
 
-# Process each scan from the metadata
-for point_cloud_entry in metadata:
-    scans = point_cloud_entry.get("scans", [])
-    if not scans:
-        with open(log_file_path, "a") as log_file:
-            log_file.write("No scans found for entry. Skipping.\n")
+# Parse points
+points = []
+colors = []
+for line in lines[1:]:  # Skip first line
+    values = line.split()
+    if len(values) < 6:
         continue
+    x, y, z, r, g, b = map(float, values[:6])
+    points.append([x, y, z])
+    colors.append([r / 255, g / 255, b / 255])
 
-    scan_file_name = scans[0]
-    scan_file_path = os.path.join(
-        "C:\\Zonneveld\\Point_Clouds", scan_file_name + ".pts"
+points = np.array(points)
+write_log("Loaded " + str(len(points)) + " points.")
+
+# Downsample for performance
+if len(points) > 5_000_000:
+    sample_indices = np.random.choice(len(points), 5_000_000, replace=False)
+    points = points[sample_indices]
+    write_log("Downsampled to 5 million points.")
+
+# Convert to Open3D Point Cloud
+pcd = o3d.geometry.PointCloud()
+pcd.points = o3d.utility.Vector3dVector(points)
+
+# Estimate Normals
+pcd.estimate_normals(
+    search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.5, max_nn=30)
+)
+
+# Convert Open3D points to numpy
+normals = np.asarray(pcd.normals)
+
+# RANSAC Plane Detection
+detected_surfaces = []
+plane_count = 0
+write_log("Running RANSAC plane detection...")
+
+while len(points) > 1000:  # Stop if too few points remain
+    plane_model, inliers = pcd.segment_plane(
+        distance_threshold=0.05, ransac_n=3, num_iterations=1000
     )
 
-    if not os.path.exists(scan_file_path):
-        with open(log_file_path, "a") as log_file:
-            log_file.write("Scan file not found: " + scan_file_path + "\n")
-        continue
+    if len(inliers) < 5000:  # Ignore small planes
+        write_log("Skipped small plane with " + str(len(inliers)) + " points.")
+        break
 
-    with open(log_file_path, "a") as log_file:
-        log_file.write("Processing Point Cloud: " + scan_file_path + "\n")
+    # Extract the plane points
+    plane_points = points[inliers]
+    plane_normals = normals[inliers]
 
-    # Read the PTS file
-    try:
-        with open(scan_file_path, "r") as file:
-            lines = file.readlines()
+    # Determine plane type (Wall, Roof, Ground)
+    normal = np.mean(plane_normals, axis=0)
+    plane_type = "Unknown"
 
-        with open(log_file_path, "a") as log_file:
-            log_file.write("Found " + str(len(lines)) + " lines in the PTS file.\n")
+    if abs(normal[2]) > 0.9:  # Z-axis normal → Ground
+        plane_type = "Ground"
+    elif abs(normal[2]) < 0.2:  # Mostly vertical → Wall
+        plane_type = "Wall"
+    else:  # Slanted surface → Roof
+        plane_type = "Roof"
 
-        # Convert point cloud data to numpy array
-        points = []
-        for line in lines[1:]:  # Skip first line (header)
-            parts = line.strip().split()
-            if len(parts) >= 3:  # x, y, z
-                x, y, z = float(parts[0]), float(parts[1]), float(parts[2])
-                points.append([x, y, z])
+    # Compute bounding box
+    min_corner = plane_points.min(axis=0).tolist()
+    max_corner = plane_points.max(axis=0).tolist()
 
-        points = np.array(points)
+    detected_surfaces.append(
+        {
+            "type": plane_type,
+            "plane_id": plane_count,
+            "bounding_box": {"min": min_corner, "max": max_corner},
+            "num_points": len(plane_points),
+        }
+    )
 
-        # **Debugging: Print First Few Points**
-        with open(log_file_path, "a") as log_file:
-            log_file.write("First 10 points: " + str(points[:10]) + "\n")
+    write_log(
+        "Detected "
+        + plane_type
+        + " plane with ID "
+        + str(plane_count)
+        + " | Points: "
+        + str(len(plane_points))
+    )
 
-        # **Downsample large point clouds**
-        if len(points) > 10000000:
-            with open(log_file_path, "a") as log_file:
-                log_file.write("Downsampling large point cloud for clustering...\n")
+    plane_count += 1
 
-            points = points[::10]  # Keep every 10th point
+    # Remove inliers and continue
+    pcd = pcd.select_by_index(inliers, invert=True)
+    points = np.asarray(pcd.points)
+    normals = np.asarray(pcd.normals)
 
-            with open(log_file_path, "a") as log_file:
-                log_file.write("Downsampled to " + str(len(points)) + " points.\n")
+# Save detected surfaces
+with open(detected_surfaces_path, "w") as file:
+    json.dump({"detected_surfaces": detected_surfaces}, file, indent=4)
 
-        # **Try DBSCAN Clustering**
-        try:
-            with open(log_file_path, "a") as log_file:
-                log_file.write("Running DBSCAN with eps=0.022 and min_samples=13...\n")
-
-            dbscan_labels = np.array(
-                DBSCAN(eps=0.022, min_samples=13).fit(points).labels_
-            )
-            unique_labels = set(dbscan_labels)
-            num_clusters = len(unique_labels) - (1 if -1 in unique_labels else 0)
-
-            with open(log_file_path, "a") as log_file:
-                log_file.write("DBSCAN found " + str(num_clusters) + " clusters.\n")
-
-            if num_clusters > 0:
-                for cluster_id in range(num_clusters):
-                    cluster_points = points[dbscan_labels == cluster_id]
-                    if len(cluster_points) == 0:
-                        continue
-
-                    min_bound = cluster_points.min(axis=0).tolist()
-                    max_bound = cluster_points.max(axis=0).tolist()
-
-                    detected_features["detected_features"].append(
-                        {
-                            "type": "Cluster",
-                            "cluster_id": cluster_id,
-                            "bounding_box": {"min": min_bound, "max": max_bound},
-                            "num_points": len(cluster_points),
-                        }
-                    )
-            else:
-                with open(log_file_path, "a") as log_file:
-                    log_file.write("DBSCAN found no clusters. Trying KMeans...\n")
-
-                # **If DBSCAN Fails, Try KMeans**
-                kmeans = KMeans(n_clusters=5, random_state=42).fit(points)
-                kmeans_labels = kmeans.labels_
-
-                for cluster_id in range(5):  # Since we set n_clusters=5
-                    cluster_points = points[kmeans_labels == cluster_id]
-                    if len(cluster_points) == 0:
-                        continue
-
-                    min_bound = cluster_points.min(axis=0).tolist()
-                    max_bound = cluster_points.max(axis=0).tolist()
-
-                    detected_features["detected_features"].append(
-                        {
-                            "type": "Cluster",
-                            "cluster_id": cluster_id,
-                            "bounding_box": {"min": min_bound, "max": max_bound},
-                            "num_points": len(cluster_points),
-                        }
-                    )
-
-        except Exception as e:
-            with open(log_file_path, "a") as log_file:
-                log_file.write("DBSCAN clustering failed: " + str(e) + "\n")
-
-    except Exception as e:
-        with open(log_file_path, "a") as log_file:
-            log_file.write("Error processing point cloud: " + str(e) + "\n")
-
-# **Save Detected Features**
-try:
-    with open(output_file, "w") as file:
-        json.dump(detected_features, file, indent=4)
-
-    with open(log_file_path, "a") as log_file:
-        log_file.write(
-            "Feature detection completed. Output saved to " + output_file + "\n"
-        )
-
-except Exception as e:
-    with open(log_file_path, "a") as log_file:
-        log_file.write("Failed to save detected features: " + str(e) + "\n")
-
+write_log("Feature detection completed. Output saved to " + detected_surfaces_path)
 print("AI Analysis Completed.")
-if "dbscan_labels" in locals():
-    print("DBSCAN unique clusters:", np.unique(dbscan_labels))
-else:
-    print("❌ DBSCAN failed: No clusters detected.")
-
-print("DBSCAN unique clusters:", np.unique(dbscan_labels))
