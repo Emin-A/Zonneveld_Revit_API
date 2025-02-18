@@ -1,8 +1,9 @@
 import openai
 import sys
+from Openai_Server.config import OPENAI_API_KEY
 
 # Set your OpenAI API key
-openai.api_key = "your-api-key"
+openai.api_key = OPENAI_API_KEY
 
 
 def ask_openai(question):
