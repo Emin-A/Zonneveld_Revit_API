@@ -1,9 +1,10 @@
 import openai
+import os
 import sys
 from Openai_Server.config import OPENAI_API_KEY
 
 # Set your OpenAI API key
-openai.api_key = OPENAI_API_KEY
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 
 def ask_openai(question):
